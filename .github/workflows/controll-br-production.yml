@@ -1,0 +1,175 @@
+name: CONTROL production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "control/**"
+      - ".github/workflows/controll-br-production.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: controll-br-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: control/package.json
+
+      - name: Instalar dependências
+        working-directory: control
+        run: npm install --no-audit --no-fund
+
+      - name: Build do CONTROL
+        working-directory: control
+        run: npm run build
+
+      - name: Validar build e identidade
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s control/dist/index.html
+          test -s control/dist/manifest.json
+          test -s control/dist/sw.js
+          test -s control/dist/control-logo-gold.svg
+          grep -q 'CONTROL' control/dist/index.html
+          grep -q 'standalone' control/dist/manifest.json
+
+      - name: Iniciar autorização Cloudflare
+        id: cfauth
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/control/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/control/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+            echo "Credencial de CI encontrada." > "$LOG"
+            exit 0
+          fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          echo "Iniciando autorização Cloudflare por dispositivo..." > "$LOG"
+          (
+            unset RUNNER_TRACKING_ID
+            nohup npx --yes wrangler@latest login --device --browser=false >> "$LOG" 2>&1 &
+            echo $! > "$PID"
+          )
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then
+              cat "$LOG"
+              exit 0
+            fi
+            if [ -f "$PID" ] && ! kill -0 "$(cat "$PID")" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Não foi possível obter o código de autorização a tempo." >> "$LOG"
+          cat "$LOG"
+          exit 1
+
+      - name: Disponibilizar código de autorização
+        if: steps.cfauth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-production-authorization
+          path: control/cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização Cloudflare
+        if: steps.cfauth.outputs.mode == 'device'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/control/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/control/cloudflare-device-login.pid"
+          test -s "$PID"
+          P="$(cat "$PID")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then
+              echo "Cloudflare autorizado com sucesso."
+              exit 0
+            fi
+            if ! kill -0 "$P" 2>/dev/null; then
+              cat "$LOG"
+              echo "Processo de autorização terminou antes da confirmação."
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+          echo "Tempo de autorização expirou."
+          exit 1
+
+      - name: Descobrir conta Cloudflare
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Descobrir branch de produção do Pages
+        id: pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest pages project list --json > /tmp/pages.json
+          PROD_BRANCH="$(node - <<'NODE'
+          const fs=require('fs');
+          const raw=fs.readFileSync('/tmp/pages.json','utf8');
+          const start=raw.indexOf('[');
+          if(start<0) process.exit(2);
+          const arr=JSON.parse(raw.slice(start));
+          const p=arr.find(x=>x.name==='controll-br');
+          if(!p) process.exit(3);
+          process.stdout.write(p.production_branch||p.productionBranch||'main');
+          NODE
+          )"
+          echo "production_branch=$PROD_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Branch de produção detectada: $PROD_BRANCH"
+
+      - name: Publicar CONTROL em produção
+        working-directory: control
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+          PROD_BRANCH: ${{ steps.pages.outputs.production_branch }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name controll-br --branch "$PROD_BRANCH" --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Validar produção
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://controll-br.pages.dev"
+          for i in {1..30}; do
+            CODE="$(curl -sS -o /tmp/control-prod.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?build=$GITHUB_SHA" || true)"
+            HEALTH_CODE="$(curl -sS -o /tmp/control-prod-health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?build=$GITHUB_SHA" || true)"
+            if [ "$CODE" = "200" ] && [ "$HEALTH_CODE" = "200" ] && grep -q 'CONTROL' /tmp/control-prod.html && grep -q '"ok":true' /tmp/control-prod-health.json; then
+              echo "CONTROL produção validado: $BASE"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::controll-br.pages.dev não passou na validação de produção"
+          cat /tmp/control-prod-health.json || true
+          exit 1
