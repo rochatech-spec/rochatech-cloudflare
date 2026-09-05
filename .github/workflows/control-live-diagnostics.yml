@@ -1,0 +1,48 @@
+name: CONTROL live diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/control-live-diagnostics.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Testar API pública do CONTROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://controll-br.pages.dev"
+
+          HEALTH_CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?diag=$GITHUB_RUN_ID")"
+          LOGIN_CODE="$(curl -sS -o /tmp/login.json -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H 'Content-Type: application/json' \
+            -X POST \
+            --data '{"email":"control-diagnostic-nonexistent@example.invalid","password":"diagnostic-password"}' \
+            "$BASE/api/auth/login?diag=$GITHUB_RUN_ID")"
+
+          echo "health_http=$HEALTH_CODE"
+          cat /tmp/health.json
+          echo
+          echo "dummy_login_http=$LOGIN_CODE"
+          cat /tmp/login.json
+          echo
+
+          test "$HEALTH_CODE" = "200"
+
+          if [ "$LOGIN_CODE" = "500" ]; then
+            echo "::error::O login falha antes de validar credenciais; provável binding/tabela D1 em runtime."
+            exit 1
+          fi
+
+          if [ "$LOGIN_CODE" != "401" ]; then
+            echo "::warning::Resposta inesperada do login: HTTP $LOGIN_CODE"
+          fi
