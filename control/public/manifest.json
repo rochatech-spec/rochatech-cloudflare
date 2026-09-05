@@ -1,0 +1,19 @@
+{
+  "name": "CONTROL — Seu dinheiro, mais possibilidades",
+  "short_name": "CONTROL",
+  "description": "Gestão financeira pessoal simples, segura e inteligente.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d0f11",
+  "theme_color": "#0d0f11",
+  "icons": [
+    {"src":"/control-symbol-gold.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}
+  ],
+  "shortcuts": [
+    {"name":"Novo lançamento","short_name":"Lançar","url":"/?action=new-transaction","icons":[{"src":"/control-symbol-gold.svg","sizes":"any"}]},
+    {"name":"Metas","url":"/?page=goals"}
+  ]
+}
