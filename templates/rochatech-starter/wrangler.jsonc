@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "PROJECT_SLUG",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-05",
+  "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application" },
+  "observability": { "enabled": true },
+  // Adicione D1, R2 e KV somente quando o projeto realmente utilizar cada serviço.
+  // Nunca grave IDs, tokens ou segredos no GitHub.
+}
