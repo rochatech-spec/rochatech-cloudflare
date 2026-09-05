@@ -153,6 +153,7 @@ jobs:
           fi
 
       - name: Verificar banco D1
+        working-directory: control
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         shell: bash
