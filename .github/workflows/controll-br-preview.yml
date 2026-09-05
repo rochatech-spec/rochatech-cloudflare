@@ -31,11 +31,6 @@ jobs:
           cache: npm
           cache-dependency-path: control/package.json
 
-      - name: Validar credencial Cloudflare
-        shell: bash
-        run: |
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error::CLOUDFLARE_API_TOKEN ausente"; exit 2; }
-
       - name: Instalar dependências
         working-directory: control
         run: npm install --no-audit --no-fund
@@ -54,6 +49,11 @@ jobs:
           test -s control/dist/control-logo-gold.svg
           grep -q 'CONTROL' control/dist/index.html
           grep -q 'standalone' control/dist/manifest.json
+
+      - name: Validar credencial Cloudflare
+        shell: bash
+        run: |
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error::CLOUDFLARE_API_TOKEN ausente — build aprovado, deploy bloqueado"; exit 2; }
 
       - name: Descobrir conta Cloudflare
         id: account
