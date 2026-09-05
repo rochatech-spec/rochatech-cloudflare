@@ -152,16 +152,33 @@ jobs:
             echo "SESSION_SECRET criado com segurança."
           fi
 
-      - name: Verificar banco D1
+      - name: Verificar e reparar schema do D1
         working-directory: control
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes wrangler@latest d1 execute control-db --remote --command "SELECT 1 AS ok" >/tmp/d1-check.txt
-          grep -q '1' /tmp/d1-check.txt
-          echo "D1 acessível."
+
+          npx --yes wrangler@latest d1 execute control-db --remote \
+            --command "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name" \
+            > /tmp/d1-tables.txt
+          cat /tmp/d1-tables.txt
+
+          if ! grep -q 'users' /tmp/d1-tables.txt; then
+            echo "Tabela users ausente. Aplicando schema idempotente do CONTROL."
+            npx --yes wrangler@latest d1 execute control-db --remote --file ./schema.sql
+          fi
+
+          npx --yes wrangler@latest d1 execute control-db --remote \
+            --command "SELECT id,tenant_id,name,email,password_hash,role FROM users LIMIT 1" \
+            > /tmp/d1-users-shape.txt
+          echo "Schema de users compatível com o backend atual."
+
+          npx --yes wrangler@latest d1 execute control-db --remote \
+            --command "SELECT COUNT(*) AS total_users FROM users" \
+            > /tmp/d1-users-count.txt
+          cat /tmp/d1-users-count.txt
 
       - name: Descobrir branch de produção do Pages
         id: pages
@@ -193,7 +210,7 @@ jobs:
           PROD_BRANCH: ${{ steps.pages.outputs.production_branch }}
         run: npx --yes wrangler@latest pages deploy dist --project-name controll-br --branch "$PROD_BRANCH" --commit-hash "$GITHUB_SHA" --commit-dirty=true
 
-      - name: Validar produção
+      - name: Validar produção e pilha de login
         shell: bash
         run: |
           set -euo pipefail
@@ -202,16 +219,26 @@ jobs:
             CODE="$(curl -sS -o /tmp/control-prod.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?build=$GITHUB_SHA" || true)"
             HEALTH_CODE="$(curl -sS -o /tmp/control-prod-health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?build=$GITHUB_SHA" || true)"
             RELEASE_CODE="$(curl -sS -o /tmp/control-release.txt -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/release.txt?build=$GITHUB_SHA" || true)"
-            if [ "$CODE" = "200" ] && [ "$HEALTH_CODE" = "200" ] && [ "$RELEASE_CODE" = "200" ] \
+            LOGIN_CODE="$(curl -sS -o /tmp/control-dummy-login.json -w '%{http_code}' \
+              -H 'Cache-Control: no-cache' \
+              -H 'Content-Type: application/json' \
+              -X POST \
+              --data '{"email":"control-diagnostic-nonexistent@example.invalid","password":"diagnostic-password"}' \
+              "$BASE/api/auth/login?build=$GITHUB_SHA" || true)"
+
+            if [ "$CODE" = "200" ] && [ "$HEALTH_CODE" = "200" ] && [ "$RELEASE_CODE" = "200" ] && [ "$LOGIN_CODE" = "401" ] \
               && grep -q 'CONTROL' /tmp/control-prod.html \
               && grep -q '"ok":true' /tmp/control-prod-health.json \
               && grep -q 'CONTROL-DARK-PREMIUM-20260905' /tmp/control-release.txt; then
-              echo "CONTROL produção validado: $BASE"
+              echo "CONTROL produção e login validados: $BASE"
               exit 0
             fi
             sleep 5
           done
-          echo "::error::controll-br.pages.dev não passou na validação de produção"
+
+          echo "::error::controll-br.pages.dev não passou na validação completa"
+          echo "health=$HEALTH_CODE release=$RELEASE_CODE login=$LOGIN_CODE"
           cat /tmp/control-prod-health.json || true
           cat /tmp/control-release.txt || true
+          cat /tmp/control-dummy-login.json || true
           exit 1
