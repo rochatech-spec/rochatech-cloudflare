@@ -1,0 +1,29 @@
+{
+  "name": "rochatech-cloudflare",
+  "version": "1.0.0",
+  "description": "Gerencie a infraestrutura RochaTech na Cloudflare com OAuth oficial e integração segura com GitHub.",
+  "author": {
+    "name": "RochaTech",
+    "url": "https://github.com/rochatech-spec"
+  },
+  "homepage": "https://github.com/rochatech-spec/rochatech-cloudflare",
+  "repository": "https://github.com/rochatech-spec/rochatech-cloudflare",
+  "license": "MIT",
+  "keywords": ["cloudflare", "workers", "pages", "d1", "r2", "github", "rochatech"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "RochaTech Cloudflare",
+    "shortDescription": "Cloudflare completa, segura e integrada ao GitHub.",
+    "longDescription": "Administre Pages, Workers, D1, R2, KV, domínios, builds e deploys pela API oficial da Cloudflare, com autenticação OAuth persistente e padrões RochaTech.",
+    "developerName": "RochaTech",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Verifique minha infraestrutura Cloudflare.",
+      "Publique este projeto usando o padrão RochaTech.",
+      "Integre este repositório GitHub à Cloudflare."
+    ],
+    "brandColor": "#F6821F"
+  },
+  "mcpServers": "./.mcp.json"
+}
