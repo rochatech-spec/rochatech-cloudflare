@@ -1,0 +1,12 @@
+name = "controll-br"
+compatibility_date = "2026-09-05"
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "control-db"
+database_id = "8bbd0172-b8fa-4311-a0d3-1fdaac5c5d38"
+
+[vars]
+APP_NAME = "CONTROL"
+APP_URL = "https://controll-br.pages.dev"
