@@ -67,16 +67,73 @@ jobs:
           grep -q 'CONTROL' control/dist/index.html
           grep -q 'standalone' control/dist/manifest.json
 
-      - name: Autenticar Cloudflare
+      - name: Iniciar autorização Cloudflare
+        id: cfauth
         shell: bash
         run: |
           set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/control/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/control/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
           if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Credencial de CI encontrada."
-          else
-            echo "Sem secret de CI: iniciando autorização segura pelo Cloudflare Device Flow."
-            npx --yes wrangler@latest login --device --browser=false
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+            echo "Credencial de CI encontrada." > "$LOG"
+            exit 0
           fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          echo "Iniciando autorização Cloudflare por dispositivo..." > "$LOG"
+          (
+            unset RUNNER_TRACKING_ID
+            nohup npx --yes wrangler@latest login --device --browser=false >> "$LOG" 2>&1 &
+            echo $! > "$PID"
+          )
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then
+              cat "$LOG"
+              exit 0
+            fi
+            if [ -f "$PID" ] && ! kill -0 "$(cat "$PID")" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Não foi possível obter o código de autorização a tempo." >> "$LOG"
+          cat "$LOG"
+          exit 1
+
+      - name: Disponibilizar código de autorização
+        if: steps.cfauth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-device-authorization
+          path: control/cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização Cloudflare
+        if: steps.cfauth.outputs.mode == 'device'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/control/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/control/cloudflare-device-login.pid"
+          test -s "$PID"
+          P="$(cat "$PID")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then
+              echo "Cloudflare autorizado com sucesso."
+              exit 0
+            fi
+            if ! kill -0 "$P" 2>/dev/null; then
+              cat "$LOG"
+              echo "Processo de autorização terminou antes da confirmação."
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+          echo "Tempo de autorização expirou."
+          exit 1
 
       - name: Descobrir conta Cloudflare
         id: account
