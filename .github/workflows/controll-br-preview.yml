@@ -1,0 +1,90 @@
+name: CONTROL preview
+
+on:
+  push:
+    branches: [control-redesign-v1]
+    paths:
+      - "control/**"
+      - ".github/workflows/controll-br-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: controll-br-preview
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: control/package.json
+
+      - name: Validar credencial Cloudflare
+        shell: bash
+        run: |
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error::CLOUDFLARE_API_TOKEN ausente"; exit 2; }
+
+      - name: Instalar dependências
+        working-directory: control
+        run: npm install --no-audit --no-fund
+
+      - name: Build do CONTROL
+        working-directory: control
+        run: npm run build
+
+      - name: Validar build e identidade
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s control/dist/index.html
+          test -s control/dist/manifest.json
+          test -s control/dist/sw.js
+          test -s control/dist/control-logo-gold.svg
+          grep -q 'CONTROL' control/dist/index.html
+          grep -q 'standalone' control/dist/manifest.json
+
+      - name: Descobrir conta Cloudflare
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" https://api.cloudflare.com/client/v4/accounts > /tmp/accounts.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/accounts.json');if(!d.success||!d.result?.length)process.exit(2);process.stdout.write(d.result[0].id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar preview
+        working-directory: control
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: |
+          npx --yes wrangler@latest pages deploy dist --project-name controll-br --branch control-redesign-v1 --commit-hash "$GITHUB_SHA"
+
+      - name: Validar preview publicado
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://control-redesign-v1.controll-br.pages.dev"
+          for i in {1..24}; do
+            CODE="$(curl -sS -o /tmp/control.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?build=$GITHUB_SHA" || true)"
+            HEALTH_CODE="$(curl -sS -o /tmp/control-health.json -w '%{http_code}' "$BASE/api/health?build=$GITHUB_SHA" || true)"
+            if [ "$CODE" = "200" ] && [ "$HEALTH_CODE" = "200" ] && grep -q 'CONTROL' /tmp/control.html && grep -q '"ok":true' /tmp/control-health.json; then
+              echo "CONTROL preview validado: $BASE"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Preview do CONTROL não passou na validação"
+          cat /tmp/control-health.json || true
+          exit 1
