@@ -129,6 +129,39 @@ jobs:
           ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
           echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Garantir segredo de sessão
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          SECRETS_OUT="$(npx --yes wrangler@latest pages secret list --project-name controll-br 2>&1)"
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            printf '%s\n' "$SECRETS_OUT"
+            exit "$RC"
+          fi
+          if printf '%s\n' "$SECRETS_OUT" | grep -q 'SESSION_SECRET'; then
+            echo "SESSION_SECRET já configurado."
+          else
+            SECRET_VALUE="$(node -e "process.stdout.write(require('crypto').randomBytes(48).toString('hex'))")"
+            printf '%s\n' "$SECRET_VALUE" | npx --yes wrangler@latest pages secret put SESSION_SECRET --project-name controll-br
+            unset SECRET_VALUE
+            echo "SESSION_SECRET criado com segurança."
+          fi
+
+      - name: Verificar banco D1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest d1 execute control-db --remote --command "SELECT 1 AS ok" >/tmp/d1-check.txt
+          grep -q '1' /tmp/d1-check.txt
+          echo "D1 acessível."
+
       - name: Descobrir branch de produção do Pages
         id: pages
         env:
