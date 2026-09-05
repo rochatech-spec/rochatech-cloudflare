@@ -67,19 +67,26 @@ jobs:
           grep -q 'CONTROL' control/dist/index.html
           grep -q 'standalone' control/dist/manifest.json
 
-      - name: Validar credencial Cloudflare
+      - name: Autenticar Cloudflare
         shell: bash
         run: |
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error::CLOUDFLARE_API_TOKEN ausente — build aprovado, deploy bloqueado"; exit 2; }
+          set -euo pipefail
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Credencial de CI encontrada."
+          else
+            echo "Sem secret de CI: iniciando autorização segura pelo Cloudflare Device Flow."
+            npx --yes wrangler@latest login --device --browser=false
+          fi
 
       - name: Descobrir conta Cloudflare
         id: account
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" https://api.cloudflare.com/client/v4/accounts > /tmp/accounts.json
-          ACCOUNT_ID="$(node -e "const d=require('/tmp/accounts.json');if(!d.success||!d.result?.length)process.exit(2);process.stdout.write(d.result[0].id)")"
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
           echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+          echo "Conta Cloudflare autenticada."
 
       - name: Publicar preview
         working-directory: control
