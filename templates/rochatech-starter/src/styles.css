@@ -1,0 +1,5 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100dvh; }
+main { min-height: 100dvh; display: grid; place-content: center; padding: 24px; text-align: center; }
+@media (prefers-color-scheme: dark) { :root { color: #f8fafc; background: #020617; } }
