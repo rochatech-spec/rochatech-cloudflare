@@ -1,8 +1,5 @@
 package com.rochatech.aurora;
 
-/**
- * HOME entry point kept for Android/One UI compatibility.
- * All UI/UX is implemented by PremiumLauncherActivity.
- */
-public class AuroraLauncherActivity extends PremiumLauncherActivity {
+/** HOME entry point for the stable Premium Light launcher engine. */
+public class AuroraLauncherActivity extends StablePremiumLauncherActivity {
 }
