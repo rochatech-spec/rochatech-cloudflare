@@ -1,8 +1,7 @@
 export type FinancialScope = 'personal' | 'shared'
 export type TransactionKind = 'income' | 'expense' | 'transfer'
 export type WalletType = 'personal' | 'shared'
-export type PageKey = 'home' | 'movements' | 'debts' | 'goals' | 'report' | 'sharing' | 'calendar' | 'insights' | 'settings' | 'profile' | 'notifications'
-
+export type PageKey = 'home' | 'movements' | 'debts' | 'goals' | 'menu' | 'report' | 'sharing' | 'calendar' | 'insights' | 'settings' | 'profile' | 'notifications'
 export interface Profile { id:string; name:string; username:string; avatar_key?:string|null; data_version?:number }
 export interface Partner { user_id:string; name:string; username:string }
 export interface SharingMember extends Partner { role?:string; joined_at?:string }
