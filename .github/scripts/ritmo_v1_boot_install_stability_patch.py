@@ -8,86 +8,25 @@ cssp=root/'public'/'styles.css'
 swp=root/'public'/'sw.js'
 manifestp=root/'public'/'manifest.webmanifest'
 
-a=app.read_text()
-idx=indexp.read_text()
-css=cssp.read_text()
+a=app.read_text(); idx=indexp.read_text(); css=cssp.read_text()
 
-# Android/desktop: instalação é a ação principal. A opção de continuar pelo
-# navegador permanece apenas no fluxo específico de iPhone/iPad.
+# Android/desktop: instalação é a ação principal. O fallback de continuar pelo
+# navegador existe somente no fluxo específico de iPhone/iPad.
 needle='<button type="button" class="welcome-continue" id="ritmoWelcomeContinue">Continuar no navegador</button>'
 replacement="${platform==='ios'?`<button type=\"button\" class=\"welcome-continue\" id=\"ritmoWelcomeContinue\">Continuar no navegador</button>`:''}"
 if needle not in a:
     raise SystemExit('Botão Continuar no navegador não encontrado')
 a=a.replace(needle,replacement,1)
 
-# Boot guard: nunca deixa o usuário preso em tela branca. Ele mostra um splash
-# leve imediatamente no modo instalado e faz UMA recuperação de shell/cache se
-# o app realmente não renderizar. Não apaga dados da conta nem dados financeiros.
-guard=r'''<script id="ritmo-boot-guard">
-(function(){
-  'use strict';
-  const RECOVERY='ritmo:boot-recovery-v2';
-  let recovering=false;
-  function root(){return document.getElementById('root')}
-  function hasRealUI(){
-    const r=root();
-    return !!(document.getElementById('ritmoWelcome')||document.getElementById('secureLock')||document.querySelector('.auth,.app-shell,.shell,.layout')||(r&&[...r.children].some(x=>!x.classList.contains('ritmo-boot-splash'))));
-  }
-  function ensureSplash(){
-    const r=root();if(!r||hasRealUI()||r.querySelector('.ritmo-boot-splash'))return;
-    r.innerHTML='<div class="ritmo-boot-splash" role="status" aria-live="polite"><img src="/ritmo-icon-192.png" alt=""><strong>Ritmo</strong><span>Abrindo com segurança…</span><i></i></div>';
-  }
-  async function clearShell(){
-    try{if('serviceWorker'in navigator){const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister().catch(()=>false)))}}catch{}
-    try{if('caches'in window){const keys=await caches.keys();await Promise.all(keys.filter(k=>k.toLowerCase().includes('ritmo')).map(k=>caches.delete(k)))}}catch{}
-  }
-  function showRecovery(){
-    const r=root();if(!r)return;
-    r.innerHTML='<div class="ritmo-boot-recovery"><img src="/ritmo-icon-192.png" alt=""><strong>Vamos reabrir o Ritmo</strong><span>O aplicativo protegeu seus dados, mas o carregamento não terminou corretamente.</span><button type="button" id="ritmoBootRetry">Atualizar Ritmo</button></div>';
-    document.getElementById('ritmoBootRetry')?.addEventListener('click',async()=>{try{sessionStorage.removeItem(RECOVERY)}catch{}await clearShell();location.replace('/?_ritmo_recover='+Date.now())});
-  }
-  async function recover(){
-    if(recovering||hasRealUI())return;recovering=true;
-    let used=false;try{used=sessionStorage.getItem(RECOVERY)==='1'}catch{}
-    if(used){showRecovery();return}
-    try{sessionStorage.setItem(RECOVERY,'1')}catch{}
-    await clearShell();
-    const u=new URL(location.href);u.searchParams.set('_ritmo_recover',Date.now().toString());location.replace(u.toString());
-  }
-  function healthy(){if(!hasRealUI())return false;try{sessionStorage.removeItem(RECOVERY)}catch{}return true}
-  window.addEventListener('error',()=>setTimeout(()=>{if(!healthy())recover()},350));
-  window.addEventListener('unhandledrejection',()=>setTimeout(()=>{if(!healthy())recover()},350));
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureSplash();setTimeout(()=>{if(!healthy())recover()},6500)},{once:true});
-  else{ensureSplash();setTimeout(()=>{if(!healthy())recover()},6500)}
-  window.addEventListener('load',()=>setTimeout(healthy,1200),{once:true});
-})();
-</script>'''
-if 'id="ritmo-boot-guard"' not in idx:
-    if '</head>' not in idx: raise SystemExit('index sem </head>')
-    idx=idx.replace('</head>',guard+'\n</head>',1)
+# Nenhum splash intermediário. Se versões anteriores deste patch forem
+# reexecutadas, removemos explicitamente seus artefatos em vez de escondê-los.
+idx=re.sub(r'<script id="ritmo-boot-guard">.*?</script>\s*','',idx,count=1,flags=re.S)
+css=re.sub(r'\n/\* Ritmo V1 — boot resiliente sem tela branca \*/.*?@media\(prefers-reduced-motion:reduce\)\{\.ritmo-boot-splash i:after\{animation:none;width:100%\}\}\n?','\n',css,count=1,flags=re.S)
 
-# Splash/fallback somente durante boot real; some assim que o app renderiza.
-css += r'''
+app.write_text(a); indexp.write_text(idx); cssp.write_text(css)
 
-/* Ritmo V1 — boot resiliente sem tela branca */
-.ritmo-boot-splash,.ritmo-boot-recovery{position:fixed;inset:0;z-index:99998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;background:var(--bg,#F7F5EF);color:var(--text,#2E2E2E);text-align:center}
-.ritmo-boot-splash img,.ritmo-boot-recovery img{width:72px;height:72px;border-radius:22px;object-fit:cover;box-shadow:0 12px 28px rgba(15,76,92,.12)}
-.ritmo-boot-splash strong,.ritmo-boot-recovery strong{font-size:21px;color:var(--primary,#0F4C5C)}
-.ritmo-boot-splash span,.ritmo-boot-recovery span{max-width:340px;font-size:11px;line-height:1.55;color:var(--muted,#6f7775)}
-.ritmo-boot-splash i{width:34px;height:3px;margin-top:5px;border-radius:999px;background:rgba(15,76,92,.12);overflow:hidden;position:relative}
-.ritmo-boot-splash i:after{content:'';position:absolute;inset:0;width:45%;border-radius:inherit;background:var(--primary,#0F4C5C);animation:ritmoBootSlide .8s ease-in-out infinite alternate}
-.ritmo-boot-recovery button{margin-top:8px;min-height:44px;border:0;border-radius:14px;padding:0 18px;background:var(--primary,#0F4C5C);color:#fff;font:inherit;font-size:11px;font-weight:800;cursor:pointer}
-@keyframes ritmoBootSlide{from{transform:translateX(-5%)}to{transform:translateX(125%)}}
-@media(prefers-reduced-motion:reduce){.ritmo-boot-splash i:after{animation:none;width:100%}}
-'''
-
-app.write_text(a)
-indexp.write_text(idx)
-cssp.write_text(css)
-
-# Cache por versão do shell. O cache anterior tinha nome fixo e podia manter
-# arquivos de releases diferentes. Agora a instalação do SW é atômica: se um
-# arquivo crítico falhar, a versão antiga continua ativa e funcional.
+# Cache versionado por release. A instalação do SW é atômica: se algum arquivo
+# crítico falhar, a versão anterior continua ativa e funcional.
 fingerprint=hashlib.sha256((a+idx+css+manifestp.read_text()).encode()).hexdigest()[:14]
 sw=f'''const CACHE='ritmo-shell-v1-{fingerprint}';
 const CORE=['/','/index.html','/styles.css','/app.js','/manifest.webmanifest','/icon.svg'];
@@ -99,9 +38,8 @@ self.addEventListener('fetch',event=>{{const req=event.request;if(req.method!=='
 '''
 swp.write_text(sw)
 
-# Browser smoke real no CI: o build só é aceito se um Chrome headless conseguir
-# abrir o shell e renderizar uma interface (boas-vindas/login), não apenas se o
-# JavaScript tiver sintaxe válida.
+# Smoke real: o navegador precisa renderizar a tela de login. A tela de boas-
+# vindas do navegador não conta como boot do app e não pode mascarar falha.
 smoke=root/'ci-browser-smoke.mjs'
 smoke.write_text(r'''import http from 'node:http';
 import fs from 'node:fs';
@@ -114,23 +52,19 @@ const server=http.createServer((req,res)=>{try{const u=new URL(req.url,'http://1
 await new Promise((resolve,reject)=>server.listen(4173,'127.0.0.1',e=>e?reject(e):resolve()));
 const candidates=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium','/usr/bin/chromium-browser'];
 const browser=candidates.find(fs.existsSync);if(!browser){server.close();throw new Error('Chrome/Chromium não encontrado no runner')}
-const args=['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=5000','--user-data-dir=/tmp/ritmo-ci-browser-'+Date.now(),'--dump-dom','http://127.0.0.1:4173/?ci-smoke=1'];
+const args=['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=1800','--user-data-dir=/tmp/ritmo-ci-browser-'+Date.now(),'--dump-dom','http://127.0.0.1:4173/?ci-smoke=1'];
 const child=spawn(browser,args,{stdio:['ignore','pipe','pipe']});let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);const timer=setTimeout(()=>child.kill('SIGKILL'),18000);const code=await new Promise(resolve=>child.on('close',resolve));clearTimeout(timer);await new Promise(resolve=>server.close(resolve));
 if(code!==0)throw new Error('Chrome headless falhou: '+err.slice(-1200));
 const body=out.slice(Math.max(0,out.search(/<body[\s>]/i)));
-if(!/(id="ritmoWelcome"|class="auth(?:\s|")|class="auth-card)/.test(body))throw new Error('Boot não renderizou boas-vindas/login. DOM: '+body.slice(0,1400));
-if(/<div class="ritmo-boot-recovery"/.test(body))throw new Error('Boot caiu na recuperação durante smoke test');
-console.log('Smoke de navegador aprovado: interface renderizada em Chrome headless.');
+if(!/class="auth(?:\s|")/.test(body)||!/id="authForm"/.test(body))throw new Error('Boot não chegou ao login. DOM: '+body.slice(0,1600));
+if(/ritmo-boot-(?:splash|recovery)|Abrindo com segurança/.test(body))throw new Error('Boot exibiu tela intermediária indevida');
+console.log('Smoke de navegador aprovado: login renderizado diretamente.');
 ''')
-pkgp=root/'package.json'
-pkg=json.loads(pkgp.read_text())
-pkg.setdefault('scripts',{})['build']='node build.mjs && node ci-browser-smoke.mjs'
-pkgp.write_text(json.dumps(pkg,ensure_ascii=False,indent=2)+'\n')
+pkgp=root/'package.json'; pkg=json.loads(pkgp.read_text()); pkg.setdefault('scripts',{})['build']='node build.mjs && node ci-browser-smoke.mjs'; pkgp.write_text(json.dumps(pkg,ensure_ascii=False,indent=2)+'\n')
 
-# Sanidade do patch final.
-final_app=app.read_text(); final_idx=indexp.read_text(); final_sw=swp.read_text()
+final_app=app.read_text(); final_idx=indexp.read_text(); final_sw=swp.read_text(); final_css=cssp.read_text()
 if 'ritmoWelcomeInstall' not in final_app: raise SystemExit('Instalador ausente')
 if "platform==='ios'?`<button type=\"button\" class=\"welcome-continue\"" not in final_app: raise SystemExit('Fluxo iOS/browser não isolado')
 if "const CACHE='ritmo-shell-v1-current'" in final_sw: raise SystemExit('Cache fixo antigo ainda presente')
-if 'ritmo-boot-guard' not in final_idx: raise SystemExit('Boot guard ausente')
-print('Ritmo V1: boot resiliente, cache atômico e instalação simplificada para Android/desktop aplicados.')
+if 'ritmo-boot-guard' in final_idx or 'ritmo-boot-splash' in final_idx or '.ritmo-boot-splash' in final_css: raise SystemExit('Splash de boot ainda presente')
+print('Ritmo V1: cache atômico mantido, splash removido e smoke de login direto aplicado.')
