@@ -43,7 +43,7 @@ jobs:
           python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
-      - name: Expor ações financeiras
+      - name: Expor bloqueio e autenticação
         shell: bash
         run: |
           python3 - <<'PY'
@@ -58,8 +58,16 @@ jobs:
               for token in ['\nfunction ','\nasync function ']:
                   q=app.find(token,p+1)
                   if q>p:candidates.append(q)
-              q=min(candidates) if candidates else min(len(app),p+15000)
-              print(f'\n=== FUNC {name} ===\n'+app[p:q][:15000])
-          for n in ['submitData','markExpensePaid','dayDetails','rowHtml','debtCard','filterStatusOptions']:
+              q=min(candidates) if candidates else min(len(app),p+16000)
+              print(f'\n=== FUNC {name} ===\n'+app[p:q][:16000])
+          for n in ['maybeLock','renderLock','unlockBiometric','toggleBiometric','renderAuth','authSubmit','loadApp','logout','saveSettings','settingsSubPage']:
               func(n)
+          for needle in ['ritmo:lastUnlock','webauthn','auto_lock_minutes','sessionStorage','localStorage']:
+              print('\n=== NEEDLE',needle,'===')
+              start=0;hits=0
+              while hits<5:
+                  p=app.find(needle,start)
+                  if p<0:break
+                  print(app[max(0,p-1000):p+2800])
+                  start=p+len(needle);hits+=1
           PY
