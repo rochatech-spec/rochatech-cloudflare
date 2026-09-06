@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/ritmo-v6-package.yml"
       - ".github/scripts/ritmo_v7_ux_patch.py"
+      - ".github/scripts/ritmo_v1_update_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -45,12 +46,16 @@ jobs:
       - name: Aplicar refinamentos da V1
         run: python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
 
+      - name: Aplicar atualização limpa do sistema
+        run: python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
+
       - name: Validar sintaxe e regras Rocha Tech
         shell: bash
         run: |
           set -euo pipefail
           node --check /tmp/ritmo-v1/public/app.js
           node --check /tmp/ritmo-v1/_worker.js
+          node --check /tmp/ritmo-v1/public/sw.js
           grep -Fq "Últimos 7 dias" /tmp/ritmo-v1/public/app.js
           grep -Fq "Últimos 15 dias" /tmp/ritmo-v1/public/app.js
           grep -Fq "Últimos 30 dias" /tmp/ritmo-v1/public/app.js
@@ -62,6 +67,14 @@ jobs:
           grep -Fq "if(!type)return ''" /tmp/ritmo-v1/public/app.js
           grep -Fq "Ferramentas" /tmp/ritmo-v1/public/app.js
           grep -Fq "Aplicativo" /tmp/ritmo-v1/public/app.js
+          grep -Fq "data-system-update" /tmp/ritmo-v1/public/app.js
+          grep -Fq "updateSystemNow" /tmp/ritmo-v1/public/app.js
+          grep -Fq "navigator.serviceWorker.getRegistrations" /tmp/ritmo-v1/public/app.js
+          grep -Fq "caches.keys" /tmp/ritmo-v1/public/app.js
+          grep -Fq "ritmo-shell-v1-current" /tmp/ritmo-v1/public/sw.js
+          grep -Fq "cache:'no-store'" /tmp/ritmo-v1/public/sw.js
+          grep -Fq "CLEAR_RITMO_CACHE" /tmp/ritmo-v1/public/sw.js
+          grep -Fq "Cache-Control: no-cache, no-store, must-revalidate" /tmp/ritmo-v1/public/_headers
           grep -Fq "mobile_shortcuts" /tmp/ritmo-v1/_worker.js
           grep -Fq "seen_notifications" /tmp/ritmo-v1/_worker.js
           grep -Fq "user_mobile_settings" /tmp/ritmo-v1/schema.sql
@@ -69,8 +82,6 @@ jobs:
           ! grep -Fq "},8000)" /tmp/ritmo-v1/public/app.js
           ! grep -Fq "ritmo:seen:" /tmp/ritmo-v1/public/app.js
           ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v1/public/app.js
-          grep -Fq "const CACHE='ritmo-v2'" /tmp/ritmo-v1/public/sw.js
-          grep -Fq "u.pathname.startsWith('/api/')" /tmp/ritmo-v1/public/sw.js
 
       - name: Build de produção
         working-directory: /tmp/ritmo-v1
@@ -81,9 +92,13 @@ jobs:
           test -s dist/app.js
           test -s dist/styles.css
           test -s dist/_worker.js
+          test -s dist/sw.js
+          test -s dist/_headers
           grep -Fq "Personalizar atalhos" dist/app.js
           grep -Fq "data-shortcut-move" dist/app.js
           grep -Fq "function fabHtml" dist/app.js
+          grep -Fq "data-system-update" dist/app.js
+          grep -Fq "ritmo-shell-v1-current" dist/sw.js
 
       - name: Empacotar Versão 1
         shell: bash
@@ -109,5 +124,5 @@ jobs:
             echo "Pacote já está atualizado."
             exit 0
           fi
-          git commit -m "Ritmo V1: atalhos, menu Mais e ação contextual"
+          git commit -m "Ritmo V1: atualização limpa de cache e service worker"
           git push origin HEAD:main
