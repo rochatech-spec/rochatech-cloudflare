@@ -16,7 +16,7 @@ if route not in s:raise SystemExit('Rota version não localizada')
 s=s.replace(route,report_route+route,1)
 
 marker="const more=document.querySelector('[data-page=\"more\"]');"
-insert="""await click('[data-page=\"more\"]','menu relatorio');await click('[data-page=\"reports\"]','relatorio');ok(text('Relatório'),'tela relatorio');ok(!/extrato/i.test(root.innerText),'nome somente Relatório');for(let i=0;i<30&&!state.walletReport;i++)await wait(40);ok(!!state.walletReport,'dados do relatorio');ok(typeof ritmoBuildReportPdf==='function','gerador PDF');const pdf=ritmoBuildReportPdf(state.walletReport);ok(pdf instanceof Blob&&pdf.type==='application/pdf'&&pdf.size>700,'PDF A4 gerado');const rf=document.querySelector('#reportFrom'),rt=document.querySelector('#reportTo');ok(!!rf&&!!rt,'filtro por periodo');rf.value='2026-09-01';rt.value='2026-09-05';document.querySelector('[data-report-apply]')?.click();await wait(180);ok(state.reportFilter.from==='2026-09-01'&&state.reportFilter.to==='2026-09-05','periodo aplicado');\n"""+marker
+insert="""await click('[data-page=\"more\"]','menu relatorio');await click('[data-page=\"reports\"]','relatorio');ok(text('Relatório'),'tela relatorio');ok(!/extrato/i.test(root.innerText),'nome somente Relatório');let pdfBtn=document.querySelector('[data-report-pdf]');for(let i=0;i<30&&(!pdfBtn||pdfBtn.disabled);i++){await wait(40);pdfBtn=document.querySelector('[data-report-pdf]')}ok(!!pdfBtn&&!pdfBtn.disabled,'dados do relatorio');ok(typeof ritmoBuildReportPdf==='function','gerador PDF');const sample={scope:'personal',from:'2026-09-01',to:'2026-09-06',summary:{income:4000,expenses:0,receivable:0,pending:0,transfers:2500,period_result:1500,current_balance:1500},personal:{incomes:[{description:'Salário',category:'Salário',amount:4000,date:'2026-09-02'}],expenses:[]},shared:null,transfers:[{created_by_name:'Flavio Neto',amount:2500,date:'2026-09-03',description:'Casa'}]};const pdf=ritmoBuildReportPdf(sample);ok(pdf instanceof Blob&&pdf.type==='application/pdf'&&pdf.size>700,'PDF A4 gerado');let rf=document.querySelector('#reportFrom'),rt=document.querySelector('#reportTo');ok(!!rf&&!!rt,'filtro por periodo');rf.value='2026-09-01';rt.value='2026-09-05';document.querySelector('[data-report-apply]')?.click();await wait(220);rf=document.querySelector('#reportFrom');rt=document.querySelector('#reportTo');ok(rf?.value==='2026-09-01'&&rt?.value==='2026-09-05','periodo aplicado');\n"""+marker
 if marker not in s:raise SystemExit('Ponto de auditoria do menu não encontrado')
 s=s.replace(marker,insert,1)
 
@@ -27,4 +27,4 @@ if head not in s:raise SystemExit('Cabeçalho da auditoria não encontrado')
 s=s.replace(head,extra,1)
 
 p.write_text(s)
-print('Ritmo V1: auditoria de carteiras, período e PDF integrada ao navegador comercial.')
+print('Ritmo V1: auditoria de carteiras, período e PDF integrada ao navegador comercial sem acessar estado interno.')
