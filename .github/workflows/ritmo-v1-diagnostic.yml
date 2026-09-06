@@ -31,7 +31,7 @@ jobs:
           set +e
           LOG=/tmp/ritmo-diagnostic.log
           : > "$LOG"
-          {
+          (
             set -e
             rm -rf /tmp/ritmo-v1 && mkdir -p /tmp/ritmo-v1
             cat ritmo-v5/part-* > /tmp/ritmo-base.b64
@@ -62,7 +62,7 @@ jobs:
             test -s dist/app.js && test -s dist/styles.css && test -s dist/_worker.js
             grep -Fq "profile-ios-hero" dist/app.js
             grep -Fq "optimizeAvatar" dist/app.js
-          } >> "$LOG" 2>&1
+          ) >> "$LOG" 2>&1
           CODE=$?
           cd "$GITHUB_WORKSPACE"
           mkdir -p .ritmo-status
@@ -71,10 +71,11 @@ jobs:
             echo "exit_code=$CODE"
             if [ "$CODE" -eq 0 ]; then echo "status=SUCCESS"; else echo "status=FAILURE"; fi
             echo "--- tail ---"
-            tail -n 100 "$LOG"
+            tail -n 120 "$LOG"
           } > .ritmo-status/diagnostic.txt
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           cat .ritmo-status/diagnostic.txt
+          exit 0
       - name: Publicar resultado do diagnóstico
         if: always()
         shell: bash
