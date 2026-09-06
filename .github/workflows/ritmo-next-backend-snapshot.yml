@@ -71,6 +71,7 @@ jobs:
           mkdir -p ritmo-next/worker
           cp /tmp/ritmo-snapshot/_worker.js ritmo-next/worker/current-worker.js
           cp /tmp/ritmo-snapshot/schema.sql ritmo-next/worker/schema-current.sql
+          cp /tmp/ritmo-snapshot/package.json ritmo-next/worker/legacy-package.json
           cat > ritmo-next/worker/SNAPSHOT.md <<'EOF'
           # Backend compatibility snapshot
 
@@ -83,7 +84,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ritmo-next/worker/current-worker.js ritmo-next/worker/schema-current.sql ritmo-next/worker/SNAPSHOT.md
+          git add ritmo-next/worker/current-worker.js ritmo-next/worker/schema-current.sql ritmo-next/worker/legacy-package.json ritmo-next/worker/SNAPSHOT.md
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Ritmo Next: snapshot do Worker e D1 atuais"
+          git commit -m "Ritmo Next: snapshot do Worker, D1 e build atuais"
           git push origin HEAD:ritmo-next-migration
