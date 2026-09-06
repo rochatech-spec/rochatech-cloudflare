@@ -1,314 +1,174 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { BootstrapData, FinancialScope } from './domain/types'
-import { changeScope, installLowConsumptionSync, loadScope, prefetchOtherScope } from './sync/engine'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ApiError, login, logout, mutate, register, scopePrefix } from './api/client'
+import { FinancialSheet, type FinancialAction, type FinancialPayload } from './components/FinancialSheet'
+import { LockScreen } from './components/LockScreen'
+import { ProfileSwitcher } from './components/ProfileSwitcher'
+import type { BootstrapData, Debt, FinancialScope, Goal, PageKey, Settings } from './domain/types'
+import { clearFinancialCache } from './offline/db'
+import { AuthPage } from './pages/AuthPage'
+import { CalendarPage } from './pages/CalendarPage'
+import { DebtsPage } from './pages/DebtsPage'
+import { GoalsPage } from './pages/GoalsPage'
+import { HomePage } from './pages/HomePage'
+import { InsightsPage } from './pages/InsightsPage'
+import { MenuPage } from './pages/MenuPage'
+import { MovementsPage } from './pages/MovementsPage'
+import { buildNotices, NotificationsPage } from './pages/NotificationsPage'
+import { ProfilePage } from './pages/ProfilePage'
+import { ReportPage } from './pages/ReportPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { SharingPage } from './pages/SharingPage'
+import { deviceSecurityEnabled } from './security/passkeys'
+import { changeScope, installLowConsumptionSync, invalidateFinancialCache, loadScope, prefetchOtherScope, refreshScope, submitMutation } from './sync/engine'
+import { Icon, type IconName } from './ui/Icon'
 
-const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+const financialPages = new Set<PageKey>(['home','movements','debts','goals'])
+const menuPages = new Set<PageKey>(['menu','report','sharing','calendar','insights','settings','profile','notifications'])
 
-function initials(name?: string) {
-  return (name || 'Ritmo')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() || '')
-    .join('')
+function applyTheme(theme: Settings['theme']='system') {
+  const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+  const meta = document.querySelector('meta[name="theme-color"]')
+  meta?.setAttribute('content', dark ? '#111817' : '#F7F5EF')
 }
 
-function formatMoney(value: number | undefined) {
-  return money.format(Number(value || 0))
-}
+function App() {
+  const [data,setData]=useState<BootstrapData|null>(null)
+  const [scope,setScope]=useState<FinancialScope>(()=>localStorage.getItem('ritmo:last-scope')==='shared'?'shared':'personal')
+  const [page,setPage]=useState<PageKey>('home')
+  const [action,setAction]=useState<FinancialAction|null>(null)
+  const [loading,setLoading]=useState(true)
+  const [switching,setSwitching]=useState(false)
+  const [authRequired,setAuthRequired]=useState(false)
+  const [locked,setLocked]=useState(false)
+  const [toast,setToast]=useState<string|null>(null)
+  const lockTimer=useRef<number|undefined>(undefined)
+  const lastActivity=useRef(Date.now())
 
-function ProfileSwitcher({
-  scope,
-  data,
-  onChange,
-  busy,
-}: {
-  scope: FinancialScope
-  data: BootstrapData
-  onChange: (scope: FinancialScope) => void
-  busy: boolean
-}) {
-  const partner = data.sharing?.partner
-  const sharedAvailable = Boolean(data.sharing?.active)
+  const notify = useCallback((message:string)=>{setToast(message);window.setTimeout(()=>setToast(null),2600)},[])
 
-  return (
-    <div className="profile-switcher" role="tablist" aria-label="Perfil financeiro">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={scope === 'personal'}
-        className={scope === 'personal' ? 'active' : ''}
-        onClick={() => onChange('personal')}
-        disabled={busy}
-      >
-        <span className="avatar personal-avatar">{initials(data.profile.name)}</span>
-        <span className="profile-switch-copy">
-          <small>Perfil</small>
-          <strong>Pessoal</strong>
-        </span>
-      </button>
+  const installLockTimer = useCallback((nextData:BootstrapData|null)=>{
+    if(lockTimer.current)window.clearTimeout(lockTimer.current)
+    if(!nextData||locked)return
+    const minutes=Number(nextData.settings?.auto_lock_minutes??5)
+    if(minutes<=0)return
+    const ms=minutes*60*1000
+    lockTimer.current=window.setTimeout(()=>setLocked(true),ms)
+  },[locked])
 
-      {sharedAvailable && (
-        <button
-          type="button"
-          role="tab"
-          aria-selected={scope === 'shared'}
-          className={scope === 'shared' ? 'active' : ''}
-          onClick={() => onChange('shared')}
-          disabled={busy}
-        >
-          <span className="avatar couple-avatar">
-            {initials(data.profile.name).slice(0, 1)}{initials(partner?.name).slice(0, 1)}
-          </span>
-          <span className="profile-switch-copy">
-            <small>Perfil</small>
-            <strong>Casal</strong>
-          </span>
-        </button>
-      )}
-    </div>
-  )
-}
+  const setFreshData = useCallback((next:BootstrapData, keepScope=true)=>{
+    setData(next)
+    if(!keepScope)setScope(next.scope)
+    applyTheme(next.settings?.theme)
+    localStorage.setItem('ritmo:last-scope',next.scope)
+  },[])
 
-function ProfileHero({ data, scope }: { data: BootstrapData; scope: FinancialScope }) {
-  const shared = scope === 'shared'
-  const partner = data.sharing?.partner
-  const firstName = data.profile.name.split(' ')[0]
-  const partnerName = partner?.name?.split(' ')[0] || 'Parceiro'
-  const balance = shared ? data.wallet.shared_balance : data.wallet.personal_balance
-  const movement = shared ? data.wallet.shared_transfers : data.wallet.sent_to_shared
+  const boot = useCallback(async(afterAuth=false)=>{
+    setLoading(true)
+    try{
+      const desired:FinancialScope=scope==='shared'?'shared':'personal'
+      const result=await loadScope(desired,{forceNetwork:navigator.onLine})
+      const next=result.data
+      setScope(next.scope);setFreshData(next);setAuthRequired(false)
+      if(afterAuth)setLocked(false)
+      else setLocked(Boolean(Number(next.settings?.auto_lock_minutes??5)>0 || deviceSecurityEnabled(next.profile.id,Number(next.security?.webauthn_count||0))))
+      void prefetchOtherScope(next.scope)
+    }catch(err){
+      if(err instanceof ApiError&&err.status===401){await clearFinancialCache();setData(null);setAuthRequired(true);setLocked(false)}
+      else if(!data){setAuthRequired(false);notify(err instanceof Error?err.message:'Não foi possível abrir o Ritmo.')}
+    }finally{setLoading(false)}
+  },[scope,setFreshData,notify,data])
 
-  return (
-    <section className={`profile-hero ${shared ? 'shared' : 'personal'}`}>
-      <div className="profile-hero-top">
-        <div className="profile-identity">
-          {shared ? (
-            <div className="stacked-avatars" aria-hidden="true">
-              <span>{initials(data.profile.name)}</span>
-              <span>{initials(partner?.name)}</span>
-            </div>
-          ) : (
-            <span className="hero-avatar">{initials(data.profile.name)}</span>
-          )}
+  useEffect(()=>{void boot(false);const uninstall=installLowConsumptionSync();const synced=()=>{if(!locked&&data)void refreshCurrent()};window.addEventListener('ritmo:synced',synced);return()=>{uninstall();window.removeEventListener('ritmo:synced',synced)}},[])
+  useEffect(()=>{applyTheme(data?.settings?.theme);const media=matchMedia('(prefers-color-scheme: dark)');const listener=()=>{if((data?.settings?.theme||'system')==='system')applyTheme('system')};media.addEventListener?.('change',listener);return()=>media.removeEventListener?.('change',listener)},[data?.settings?.theme])
+  useEffect(()=>{if(!data||locked)return;const activity=()=>{lastActivity.current=Date.now();installLockTimer(data)};const events=['pointerdown','keydown','touchstart'] as const;events.forEach(e=>window.addEventListener(e,activity,{passive:true}));installLockTimer(data);const visibility=()=>{if(document.hidden){if(lockTimer.current)window.clearTimeout(lockTimer.current)}else{const minutes=Number(data.settings?.auto_lock_minutes??5);if(minutes>0&&Date.now()-lastActivity.current>=minutes*60*1000)setLocked(true);else installLockTimer(data)}};document.addEventListener('visibilitychange',visibility);return()=>{events.forEach(e=>window.removeEventListener(e,activity));document.removeEventListener('visibilitychange',visibility);if(lockTimer.current)window.clearTimeout(lockTimer.current)}},[data,locked,installLockTimer])
 
-          <div>
-            <small>{shared ? 'PERFIL DO CASAL' : 'SEU PERFIL'}</small>
-            <h1>{shared ? `${firstName} & ${partnerName}` : firstName}</h1>
-            <p>{shared ? 'O dinheiro em comum, sem misturar o que é pessoal.' : 'Seu dinheiro pessoal, organizado no seu ritmo.'}</p>
-          </div>
-        </div>
+  async function refreshCurrent(nextScope:FinancialScope=scope){
+    if(!navigator.onLine)return
+    try{const fresh=await refreshScope(nextScope);setScope(fresh.scope);setFreshData(fresh)}catch(err){if(err instanceof ApiError&&err.status===401){await clearFinancialCache();setData(null);setAuthRequired(true)}}
+  }
 
-        <span className="profile-pill">{shared ? 'Casal' : 'Pessoal'}</span>
-      </div>
+  async function authenticate(kind:'login'|'register',values:string[]){
+    await clearFinancialCache();localStorage.removeItem('ritmo:cache-owner');localStorage.setItem('ritmo:last-scope','personal');setScope('personal')
+    if(kind==='login')await login(values[0],values[1]);else await register(values[0],values[1],values[2])
+    await boot(true)
+  }
 
-      <div className="balance-block">
-        <span>{shared ? 'Saldo do casal' : 'Meu saldo'}</span>
-        <strong>{formatMoney(balance)}</strong>
-        <small>{shared ? `${formatMoney(movement)} em contribuições` : `${formatMoney(movement)} enviados ao casal`}</small>
-      </div>
+  async function otherAccount(){try{await logout()}catch{}await clearFinancialCache();localStorage.removeItem('ritmo:cache-owner');setData(null);setLocked(false);setAuthRequired(true);setPage('home')}
 
-      <div className="hero-actions">
-        {data.sharing?.active && <button type="button" className="primary-action">Transferir</button>}
-        <button type="button">Relatório</button>
-        {shared && <button type="button">Detalhes</button>}
-      </div>
-    </section>
-  )
-}
-
-function CompactStat({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <article className="compact-stat">
-      <span className={`stat-dot ${tone}`} />
-      <div>
-        <small>{label}</small>
-        <strong>{formatMoney(value)}</strong>
-      </div>
-    </article>
-  )
-}
-
-function Dashboard({ data, scope }: { data: BootstrapData; scope: FinancialScope }) {
-  const stats = useMemo(() => {
-    const paidExpenses = data.expenses.filter((item) => item.status === 'pago').reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const pending = data.expenses.filter((item) => item.status !== 'pago').reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const income = data.incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const debt = data.debts.reduce((sum, item) => sum + Number(item.total_amount || 0), 0)
-    return { income, paidExpenses, pending, debt }
-  }, [data])
-
-  const shared = scope === 'shared'
-  const contributions = data.wallet.contributions || []
-
-  return (
-    <>
-      <ProfileHero data={data} scope={scope} />
-
-      <section className="section-block">
-        <header className="section-heading">
-          <div>
-            <small>VISÃO GERAL</small>
-            <h2>Seu financeiro</h2>
-          </div>
-        </header>
-
-        <div className="stats-grid">
-          <CompactStat label="Entradas" value={stats.income} tone="green" />
-          <CompactStat label="Saídas" value={stats.paidExpenses} tone="coral" />
-          <CompactStat label="A pagar" value={stats.pending} tone="gold" />
-          <CompactStat label="Dívidas" value={stats.debt} tone="teal" />
-        </div>
-      </section>
-
-      {shared && (
-        <section className="premium-panel section-block">
-          <header className="section-heading">
-            <div>
-              <small>CONTRIBUIÇÕES</small>
-              <h2>Quem colocou no casal</h2>
-            </div>
-          </header>
-
-          <div className="premium-list">
-            {contributions.length ? contributions.map((item) => (
-              <div className="premium-row" key={item.owner_user_id}>
-                <span className="mini-avatar">{initials(item.name)}</span>
-                <div className="row-copy">
-                  <strong>{item.name}</strong>
-                  <small>Contribuído para o casal</small>
-                </div>
-                <b>{formatMoney(item.amount)}</b>
-              </div>
-            )) : <div className="empty-state">As contribuições aparecerão aqui.</div>}
-          </div>
-        </section>
-      )}
-
-      <section className="premium-panel section-block">
-        <header className="section-heading">
-          <div>
-            <small>MOVIMENTAÇÕES</small>
-            <h2>Recentes</h2>
-          </div>
-          <button type="button" className="text-action">Ver tudo</button>
-        </header>
-
-        <div className="premium-list">
-          {[...data.incomes.slice(0, 2), ...data.expenses.slice(0, 3)].slice(0, 5).map((item) => {
-            const expense = 'status' in item
-            return (
-              <div className="premium-row" key={`${expense ? 'e' : 'i'}-${item.id}`}>
-                <span className={`movement-icon ${expense ? 'expense' : 'income'}`}>{expense ? '↓' : '↑'}</span>
-                <div className="row-copy">
-                  <strong>{item.description}</strong>
-                  <small>{item.category} · {item.date}</small>
-                </div>
-                <b className={expense ? 'expense-value' : 'income-value'}>{expense ? '-' : '+'}{formatMoney(item.amount)}</b>
-              </div>
-            )
-          })}
-          {!data.incomes.length && !data.expenses.length && <div className="empty-state">Nenhuma movimentação neste perfil ainda.</div>}
-        </div>
-      </section>
-    </>
-  )
-}
-
-export default function App() {
-  const [scope, setScope] = useState<FinancialScope>(() => (localStorage.getItem('ritmo:scope') === 'shared' ? 'shared' : 'personal'))
-  const [data, setData] = useState<BootstrapData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [switching, setSwitching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const uninstallSync = installLowConsumptionSync()
-    let alive = true
-
-    async function boot() {
-      try {
-        const result = await loadScope(scope)
-        if (!alive) return
-        setData(result.data)
-        setLoading(false)
-        void prefetchOtherScope(scope)
-
-        if (result.stale && navigator.onLine) {
-          const fresh = await loadScope(scope, { forceNetwork: true }).catch(() => null)
-          if (alive && fresh) setData(fresh.data)
-        }
-      } catch (bootError) {
-        if (!alive) return
-        setError(bootError instanceof Error ? bootError.message : 'Não foi possível abrir o Ritmo.')
-        setLoading(false)
-      }
-    }
-
-    void boot()
-    return () => {
-      alive = false
-      uninstallSync()
-    }
-    // O boot ocorre uma vez. Mudanças de perfil usam handleScopeChange para evitar buscas duplicadas.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function handleScopeChange(nextScope: FinancialScope) {
-    if (nextScope === scope || switching) return
+  async function switchProfile(next:FinancialScope){
+    if(next===scope||switching)return
     setSwitching(true)
-    setError(null)
-
-    try {
-      const next = await changeScope(nextScope)
-      setScope(nextScope)
-      setData(next)
-      localStorage.setItem('ritmo:scope', nextScope)
-
-      const cached = await loadScope(nextScope)
-      if (cached.stale && navigator.onLine) {
-        const fresh = await loadScope(nextScope, { forceNetwork: true }).catch(() => null)
-        if (fresh) setData(fresh.data)
-      }
-    } catch (scopeError) {
-      setError(scopeError instanceof Error ? scopeError.message : 'Não foi possível trocar de perfil.')
-    } finally {
-      setSwitching(false)
-    }
+    try{const nextData=await changeScope(next);setScope(nextData.scope);setFreshData(nextData);localStorage.setItem('ritmo:last-scope',nextData.scope)}catch(err){notify(err instanceof Error?err.message:'Não foi possível trocar de perfil.')}finally{setSwitching(false)}
   }
 
-  if (loading) {
-    return <main className="app-shell"><div className="boot-card"><span className="brand-mark">R</span><p>Organizando seu Ritmo…</p></div></main>
+  async function completeMutation(result:{queued:boolean},affected:FinancialScope){
+    if(result.queued){notify('Salvo neste aparelho. O Ritmo sincroniza quando a conexão voltar.');return}
+    await invalidateFinancialCache()
+    if(affected===scope)await refreshCurrent(scope)
+    else void prefetchOtherScope(scope)
+    notify('Salvo com sucesso.')
   }
 
-  if (!data) {
-    return <main className="app-shell"><div className="boot-card"><span className="brand-mark">R</span><p>{error || 'Não foi possível abrir o Ritmo.'}</p></div></main>
+  async function submitFinancial(payload:FinancialPayload){
+    const {action,targetScope,body}=payload
+    let path='',method:'POST'|'PATCH'='POST',affected=targetScope
+    const prefix=scopePrefix(targetScope)
+    if(action.type==='income'){path=`${prefix}/incomes${action.item?`/${action.item.id}`:''}`;method=action.item?'PATCH':'POST'}
+    if(action.type==='expense'){path=`${prefix}/expenses${action.item?`/${action.item.id}`:''}`;method=action.item?'PATCH':'POST'}
+    if(action.type==='debt'){path=`${prefix}/debts${action.item?`/${action.item.id}`:''}`;method=action.item?'PATCH':'POST'}
+    if(action.type==='goal'){path=`${prefix}/goals${action.item?`/${action.item.id}`:''}`;method=action.item?'PATCH':'POST'}
+    if(action.type==='payment'||action.type==='credit'){affected=action.scope;path=`${scopePrefix(action.scope)}/debts/${action.debt.id}/${action.type}`}
+    if(action.type==='contribution'){affected=action.scope;path=`${scopePrefix(action.scope)}/goals/${action.goal.id}/contributions`}
+    if(action.type==='transfer'){affected='personal';path='/api/wallet/transfers'}
+    const result=await submitMutation(path,method,body)
+    await completeMutation(result,affected)
   }
 
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">Ritmo</div>
-        <div className="topbar-actions">
-          <button type="button" aria-label="Notificações">◌</button>
-          <span className="top-avatar">{initials(data.profile.name)}</span>
-        </div>
-      </header>
+  async function deleteMovement(item:{id:string;kind:'income'|'expense'}){if(!confirm(`Excluir esta ${item.kind==='income'?'entrada':'saída'}?`))return;const plural=item.kind==='income'?'incomes':'expenses';await completeMutation(await submitMutation(`${scopePrefix(scope)}/${plural}/${item.id}`,'DELETE'),scope)}
+  async function deleteDebt(debt:Debt){if(!confirm(`Excluir a dívida “${debt.creditor}” e os lançamentos vinculados?`))return;await completeMutation(await submitMutation(`${scopePrefix(scope)}/debts/${debt.id}`,'DELETE'),scope)}
+  async function deleteGoal(goal:Goal){if(!confirm(`Excluir a meta “${goal.name}”?`))return;await completeMutation(await submitMutation(`${scopePrefix(scope)}/goals/${goal.id}`,'DELETE'),scope)}
 
-      <div className="content-shell">
-        <ProfileSwitcher scope={scope} data={data} onChange={handleScopeChange} busy={switching} />
-        {error && <div className="inline-alert">{error}</div>}
-        <div className={switching ? 'content-transition switching' : 'content-transition'}>
-          <Dashboard data={data} scope={scope} />
-        </div>
-      </div>
+  async function sharingAction(path:string,body:unknown={}){await mutate(path,'POST',body);await invalidateFinancialCache();await refreshCurrent('personal');notify('Compartilhamento atualizado.')}
+  async function saveSettings(patch:Partial<Settings>){await mutate('/api/settings','PATCH',patch);setData(current=>current?{...current,settings:{...(current.settings||{}),...patch}}:current);if(patch.theme)applyTheme(patch.theme);notify('Configurações salvas.')}
+  async function saveProfile(values:{name:string;username:string;password?:string}){await mutate('/api/profile','PATCH',values);await invalidateFinancialCache();await refreshCurrent(scope)}
 
-      <nav className="bottom-nav" aria-label="Navegação principal">
-        <button type="button" className="active"><span>⌂</span><small>Início</small></button>
-        <button type="button"><span>↕</span><small>Movimentos</small></button>
-        <button type="button"><span>◇</span><small>Dívidas</small></button>
-        <button type="button"><span>◎</span><small>Metas</small></button>
-        <button type="button"><span>☰</span><small>Menu</small></button>
-      </nav>
-    </main>
-  )
+  const noticeCount=useMemo(()=>data?buildNotices(data).length:0,[data])
+
+  if(loading&&!data)return <div className="app-loading"><span className="loading-logo">R</span><strong>Ritmo</strong></div>
+  if(authRequired||!data)return <AuthPage onLogin={(u,p)=>authenticate('login',[u,p])} onRegister={(n,u,p)=>authenticate('register',[n,u,p])}/>
+  if(locked)return <LockScreen data={data} onUnlock={()=>{lastActivity.current=Date.now();setLocked(false)}} onOtherAccount={()=>void otherAccount()}/>
+
+  const pageContent=(()=>{
+    if(page==='home')return <HomePage data={data} scope={scope} onQuick={(type)=>setAction(type==='transfer'?{type:'transfer',scope:'personal'}:{type,scope} as FinancialAction)} onReport={()=>setPage('report')} onSharing={()=>setPage('sharing')}/>
+    if(page==='movements')return <MovementsPage data={data} onNew={(type)=>setAction({type,scope})} onEdit={(item)=>setAction(item.kind==='income'?{type:'income',item,scope}:{type:'expense',item,scope})} onDelete={(item)=>void deleteMovement(item)}/>
+    if(page==='debts')return <DebtsPage data={data} onNew={()=>setAction({type:'debt',scope})} onEdit={(debt)=>setAction({type:'debt',item:debt,scope})} onDelete={(debt)=>void deleteDebt(debt)} onEvent={(debt,type)=>setAction({type,debt,scope})}/>
+    if(page==='goals')return <GoalsPage data={data} onNew={()=>setAction({type:'goal',scope})} onEdit={(goal)=>setAction({type:'goal',item:goal,scope})} onDelete={(goal)=>void deleteGoal(goal)} onContribution={(goal)=>setAction({type:'contribution',goal,scope})}/>
+    if(page==='report')return <ReportPage initialScope={scope} sharedAvailable={data.sharing.active} profileName={data.profile.name}/>
+    if(page==='sharing')return <SharingPage data={data} onTransfer={()=>setAction({type:'transfer',scope:'personal'})} onInvite={(username)=>sharingAction('/api/sharing/invite',{username})} onAcceptCode={(code)=>sharingAction('/api/sharing/accept-code',{code})} onInviteAction={(id,a)=>sharingAction(`/api/sharing/invites/${id}/${a}`)}/>
+    if(page==='calendar')return <CalendarPage data={data}/>
+    if(page==='insights')return <InsightsPage data={data}/>
+    if(page==='settings')return <SettingsPage settings={data.settings||{}} userId={data.profile.id} credentialCount={Number(data.security?.webauthn_count||0)} onSave={saveSettings} onSecurityChanged={()=>refreshCurrent(scope)}/>
+    if(page==='profile')return <ProfilePage profile={data.profile} onSave={saveProfile} onLogout={otherAccount}/>
+    if(page==='notifications')return <NotificationsPage data={data}/>
+    return <MenuPage onOpen={setPage}/>
+  })()
+
+  return <div className="app-shell">
+    <aside className="desktop-sidebar"><button className="brand-button" type="button" onClick={()=>setPage('home')}><span>R</span><strong>Ritmo</strong></button><nav>{desktopNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav><button className="sidebar-profile" type="button" onClick={()=>setPage('profile')}><span>{data.profile.name.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.name}</strong><small>@{data.profile.username}</small></div></button></aside>
+    <div className="app-column">
+      <header className="mobile-topbar"><button className="mobile-brand" type="button" onClick={()=>setPage('home')}><span>R</span><strong>Ritmo</strong></button><button className="notification-button" type="button" onClick={()=>setPage('notifications')} aria-label="Avisos"><Icon name="bell"/>{noticeCount>0&&<i>{Math.min(99,noticeCount)}</i>}</button></header>
+      <main className="app-main">{financialPages.has(page)&&<ProfileSwitcher scope={scope} data={data} onChange={(value)=>void switchProfile(value)} busy={switching}/>}<div className="page-frame" key={`${page}-${scope}`}>{pageContent}</div></main>
+      <nav className="bottom-nav">{mobileNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav>
+    </div>
+    {action&&<FinancialSheet action={action} sharedAvailable={data.sharing.active} onClose={()=>setAction(null)} onSubmit={submitFinancial}/>} 
+    {toast&&<div className="toast" role="status">{toast}</div>}
+  </div>
 }
+
+type NavItem={page:PageKey;label:string;icon:IconName}
+const mobileNav:NavItem[]=[{page:'home',label:'Início',icon:'home'},{page:'movements',label:'Movimentos',icon:'movements'},{page:'debts',label:'Dívidas',icon:'debt'},{page:'goals',label:'Metas',icon:'goal'},{page:'menu',label:'Menu',icon:'menu'}]
+const desktopNav:NavItem[]=[...mobileNav.slice(0,4),{page:'report',label:'Relatório',icon:'report'},{page:'calendar',label:'Calendário',icon:'calendar'},{page:'insights',label:'Insights',icon:'spark'},{page:'menu',label:'Menu',icon:'menu'}]
+function NavButton({item,active,onClick}:{item:NavItem;active:boolean;onClick:()=>void}){return <button type="button" className={active?'nav-button active':'nav-button'} onClick={onClick}><Icon name={item.icon}/><span>{item.label}</span></button>}
+
+export default App
