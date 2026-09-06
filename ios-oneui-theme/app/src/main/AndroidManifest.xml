@@ -19,7 +19,7 @@
         android:theme="@style/Theme.AuroraGlass">
 
         <activity
-            android:name=".PremiumLauncherActivity"
+            android:name=".AuroraLauncherActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="unspecified"
@@ -32,11 +32,15 @@
         </activity>
 
         <activity
-            android:name=".AuroraLauncherActivity"
+            android:name=".StablePremiumLauncherActivity"
             android:exported="false" />
 
         <activity
-            android:name=".AuroraSettingsActivity"
+            android:name=".PremiumLauncherActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".AuroraControlActivity"
             android:exported="true"
             android:label="Aurora">
             <intent-filter>
@@ -44,6 +48,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".AuroraSettingsActivity"
+            android:exported="false" />
 
         <activity
             android:name=".PinWidgetActivity"
