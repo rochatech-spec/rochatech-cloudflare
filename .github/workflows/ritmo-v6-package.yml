@@ -1,17 +1,18 @@
-name: Ritmo v6 package
+name: Ritmo V1 package
 
 on:
   push:
     branches: [main]
     paths:
       - ".github/workflows/ritmo-v6-package.yml"
+      - ".github/scripts/ritmo_v7_ux_patch.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: ritmo-v6-package
+  group: ritmo-v1-package
   cancel-in-progress: true
 
 jobs:
@@ -25,49 +26,54 @@ jobs:
         with:
           node-version: 22
 
-      - name: Restaurar versão segura atual
+      - name: Restaurar base atual
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/ritmo-v6
-          mkdir -p /tmp/ritmo-v6
-          cat ritmo-v5/part-* > /tmp/ritmo-v5.b64
-          base64 -d /tmp/ritmo-v5.b64 > /tmp/ritmo-v5.tgz
-          tar -xzf /tmp/ritmo-v5.tgz -C /tmp/ritmo-v6
+          rm -rf /tmp/ritmo-v1
+          mkdir -p /tmp/ritmo-v1
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-v1
 
       - name: Aplicar backend cloud-first
-        run: python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v6
+        run: python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v1
 
       - name: Aplicar UI, filtros e economia
-        run: python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v6
+        run: python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v1
+
+      - name: Aplicar refinamentos da V1
+        run: python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
 
       - name: Validar sintaxe e regras Rocha Tech
         shell: bash
         run: |
           set -euo pipefail
-          node --check /tmp/ritmo-v6/public/app.js
-          node --check /tmp/ritmo-v6/_worker.js
-          grep -Fq "Últimos 7 dias" /tmp/ritmo-v6/public/app.js
-          grep -Fq "Últimos 15 dias" /tmp/ritmo-v6/public/app.js
-          grep -Fq "Últimos 30 dias" /tmp/ritmo-v6/public/app.js
-          grep -Fq "Escolher mês" /tmp/ritmo-v6/public/app.js
-          grep -Fq "Personalizar atalhos" /tmp/ritmo-v6/public/app.js
-          grep -Fq "function morePage" /tmp/ritmo-v6/public/app.js
-          grep -Fq "function shortcutsPage" /tmp/ritmo-v6/public/app.js
-          grep -Fq "mobile_shortcuts" /tmp/ritmo-v6/_worker.js
-          grep -Fq "seen_notifications" /tmp/ritmo-v6/_worker.js
-          grep -Fq "user_mobile_settings" /tmp/ritmo-v6/schema.sql
-          grep -Fq "120000" /tmp/ritmo-v6/public/app.js
-          ! grep -Fq "},8000)" /tmp/ritmo-v6/public/app.js
-          ! grep -Fq "ritmo:seen:" /tmp/ritmo-v6/public/app.js
-          ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v6/public/app.js
-          grep -Fq "const CACHE='ritmo-v2'" /tmp/ritmo-v6/public/sw.js
-          grep -Fq "u.pathname.startsWith('/api/')" /tmp/ritmo-v6/public/sw.js
-          echo '=== localStorage restante (somente cache/UX do dispositivo) ==='
-          grep -n "localStorage" /tmp/ritmo-v6/public/app.js || true
+          node --check /tmp/ritmo-v1/public/app.js
+          node --check /tmp/ritmo-v1/_worker.js
+          grep -Fq "Últimos 7 dias" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Últimos 15 dias" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Últimos 30 dias" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Escolher mês" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Personalizar atalhos" /tmp/ritmo-v1/public/app.js
+          grep -Fq "shortcutDraft" /tmp/ritmo-v1/public/app.js
+          grep -Fq "data-shortcut-move" /tmp/ritmo-v1/public/app.js
+          grep -Fq "function fabHtml" /tmp/ritmo-v1/public/app.js
+          grep -Fq "if(!type)return ''" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Ferramentas" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Aplicativo" /tmp/ritmo-v1/public/app.js
+          grep -Fq "mobile_shortcuts" /tmp/ritmo-v1/_worker.js
+          grep -Fq "seen_notifications" /tmp/ritmo-v1/_worker.js
+          grep -Fq "user_mobile_settings" /tmp/ritmo-v1/schema.sql
+          grep -Fq "120000" /tmp/ritmo-v1/public/app.js
+          ! grep -Fq "},8000)" /tmp/ritmo-v1/public/app.js
+          ! grep -Fq "ritmo:seen:" /tmp/ritmo-v1/public/app.js
+          ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v1/public/app.js
+          grep -Fq "const CACHE='ritmo-v2'" /tmp/ritmo-v1/public/sw.js
+          grep -Fq "u.pathname.startsWith('/api/')" /tmp/ritmo-v1/public/sw.js
 
       - name: Build de produção
-        working-directory: /tmp/ritmo-v6
+        working-directory: /tmp/ritmo-v1
         run: |
           npm install --no-audit --no-fund
           npm run build
@@ -76,23 +82,21 @@ jobs:
           test -s dist/styles.css
           test -s dist/_worker.js
           grep -Fq "Personalizar atalhos" dist/app.js
-          grep -Fq "Últimos 30 dias" dist/app.js
+          grep -Fq "data-shortcut-move" dist/app.js
+          grep -Fq "function fabHtml" dist/app.js
 
-      - name: Empacotar versão 6
+      - name: Empacotar Versão 1
         shell: bash
         run: |
           set -euo pipefail
           rm -rf ritmo-v6
           mkdir -p ritmo-v6
-          tar -C /tmp/ritmo-v6 --exclude=node_modules --exclude=dist -czf /tmp/ritmo-v6.tgz .
-          base64 -w0 /tmp/ritmo-v6.tgz > /tmp/ritmo-v6.b64
-          split -b 6000 -d -a 2 /tmp/ritmo-v6.b64 ritmo-v6/part-
-          B64_SHA="$(sha256sum /tmp/ritmo-v6.b64 | awk '{print $1}')"
-          TGZ_SHA="$(sha256sum /tmp/ritmo-v6.tgz | awk '{print $1}')"
+          tar -C /tmp/ritmo-v1 --exclude=node_modules --exclude=dist -czf /tmp/ritmo-v1.tgz .
+          base64 -w0 /tmp/ritmo-v1.tgz > /tmp/ritmo-v1.b64
+          split -b 6000 -d -a 2 /tmp/ritmo-v1.b64 ritmo-v6/part-
+          B64_SHA="$(sha256sum /tmp/ritmo-v1.b64 | awk '{print $1}')"
+          TGZ_SHA="$(sha256sum /tmp/ritmo-v1.tgz | awk '{print $1}')"
           printf 'B64_SHA=%s\nTGZ_SHA=%s\n' "$B64_SHA" "$TGZ_SHA" > ritmo-v6/HASHES.txt
-          echo "Bundle: $TGZ_SHA"
-          echo "Base64: $B64_SHA"
-          ls -lh ritmo-v6
 
       - name: Publicar pacote no repositório
         shell: bash
@@ -105,5 +109,5 @@ jobs:
             echo "Pacote já está atualizado."
             exit 0
           fi
-          git commit -m "Ritmo v6: mobile completo, filtros e sync econômico"
+          git commit -m "Ritmo V1: atalhos, menu Mais e ação contextual"
           git push origin HEAD:main
