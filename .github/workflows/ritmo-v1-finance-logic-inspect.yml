@@ -43,39 +43,23 @@ jobs:
           python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
-      - name: Expor trechos financeiros relevantes
+      - name: Expor ações financeiras
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           app=Path('/tmp/ritmo-v1/public/app.js').read_text()
-          worker=Path('/tmp/ritmo-v1/_worker.js').read_text()
-          schema=Path('/tmp/ritmo-v1/schema.sql').read_text()
-          def func(src,name):
-              starts=[src.find(f'function {name}('),src.find(f'async function {name}(')]
+          def func(name):
+              starts=[app.find(f'function {name}('),app.find(f'async function {name}(')]
               starts=[x for x in starts if x>=0]
               if not starts:
                   print(f'\n=== {name}: NAO ENCONTRADA ===');return
-              p=min(starts);c=[]
+              p=min(starts); candidates=[]
               for token in ['\nfunction ','\nasync function ']:
-                  q=src.find(token,p+1)
-                  if q>p:c.append(q)
-              q=min(c) if c else min(len(src),p+12000)
-              print(f'\n=== FUNC {name} ===\n'+src[p:q][:12000])
-          for n in ['currentStats','homePage','itemMoney','modalHtml','calendarPage','insightsPage','insightHtml','notifications','bindApp']:
-              func(app,n)
-          print('\n=== SUBMIT DATAFORM ===')
-          for needle in ["dataForm","FormData","data-pay-expense","data-day"]:
-              p=app.find(needle)
-              if p>=0: print('\n---',needle,'---\n',app[max(0,p-2200):p+7000])
-          print('\n=== SCHEMA INCOMES/EXPENSES/DEBTS ===')
-          for table in ['incomes','expenses','debts','debt_events','shared_incomes','shared_expenses','shared_debts','shared_debt_events']:
-              for prefix in [f'CREATE TABLE IF NOT EXISTS {table}',f'CREATE TABLE {table}']:
-                  p=schema.find(prefix)
-                  if p>=0:
-                      print('\n---',table,'---\n',schema[p:schema.find(';',p)+1]);break
-          print('\n=== WORKER FINANCE ROUTES ===')
-          for needle in ["path==='/api/income'","path==='/api/shared/income'","INSERT INTO incomes","UPDATE incomes","INSERT INTO shared_incomes","UPDATE shared_incomes","INSERT INTO expenses","UPDATE expenses","INSERT INTO shared_expenses","UPDATE shared_expenses"]:
-              p=worker.find(needle)
-              if p>=0: print('\n---',needle,'---\n',worker[max(0,p-1800):p+7000])
+                  q=app.find(token,p+1)
+                  if q>p:candidates.append(q)
+              q=min(candidates) if candidates else min(len(app),p+15000)
+              print(f'\n=== FUNC {name} ===\n'+app[p:q][:15000])
+          for n in ['submitData','markExpensePaid','dayDetails','rowHtml','debtCard','filterStatusOptions']:
+              func(n)
           PY
