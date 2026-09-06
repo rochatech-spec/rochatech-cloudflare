@@ -19,6 +19,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.widget.FrameLayout;
+import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -29,6 +30,10 @@ public class AuroraSettingsActivity extends Activity {
     public static final String KEY_STYLE = "wallpaper_style";
     private LinearLayout body;
     private FrameLayout root;
+
+    private static final String[] WALLPAPER_NAMES = {
+            "Glass", "Sky", "Violet", "Sunset", "Aqua", "Rose", "Graphite", "Midnight"
+    };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -61,7 +66,7 @@ public class AuroraSettingsActivity extends Activity {
 
         addGroup("Aparência",
                 row("Aplicar Aurora", "Usar esta Tela de Início", v -> applyAurora()),
-                row("Papel de Parede", "Escolher o visual da Tela de Início e Bloqueada", v -> showWallpaperChoices()),
+                row("Papéis de Parede", "Escolher entre os visuais do Aurora", v -> showWallpaperChoices()),
                 row("Tela Bloqueada", "Aplicar novamente o visual combinado", v -> {
                     applyWallpapers(currentStyle(), true);
                     Toast.makeText(this, "Tela Bloqueada atualizada", Toast.LENGTH_SHORT).show();
@@ -150,71 +155,110 @@ public class AuroraSettingsActivity extends Activity {
 
         FrameLayout dim = new FrameLayout(this);
         dim.setTag("wallpaper_sheet");
-        dim.setBackgroundColor(Color.argb(70,0,0,0));
+        dim.setBackgroundColor(Color.argb(75,0,0,0));
         dim.setOnClickListener(v -> root.removeView(dim));
 
         LinearLayout sheet = new LinearLayout(this);
         sheet.setOrientation(LinearLayout.VERTICAL);
-        sheet.setPadding(dp(16), dp(14), dp(16), dp(18));
+        sheet.setPadding(dp(14), dp(12), dp(14), dp(14));
         sheet.setBackground(roundRect(Color.rgb(248,248,250), 28));
         sheet.setElevation(dp(24));
         sheet.setOnClickListener(v -> {});
 
-        TextView heading = text("Papel de Parede", 20, Color.rgb(28,28,30), true);
-        heading.setGravity(Gravity.CENTER);
-        sheet.addView(heading, new LinearLayout.LayoutParams(-1, dp(42)));
+        View handle = new View(this);
+        handle.setBackground(roundRect(Color.rgb(199,199,204), 3));
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(dp(38), dp(5));
+        hp.gravity = Gravity.CENTER_HORIZONTAL;
+        hp.bottomMargin = dp(9);
+        sheet.addView(handle, hp);
 
-        String[] names = {"Glass", "Azul", "Grafite"};
-        for (int i=0;i<names.length;i++) {
+        TextView heading = text("Papéis de Parede", 20, Color.rgb(28,28,30), true);
+        heading.setGravity(Gravity.CENTER);
+        sheet.addView(heading, new LinearLayout.LayoutParams(-1, dp(40)));
+
+        ScrollView scroller = new ScrollView(this);
+        scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(2);
+        grid.setPadding(0, dp(4), 0, dp(4));
+
+        for (int i=0;i<WALLPAPER_NAMES.length;i++) {
             final int style = i;
             LinearLayout option = new LinearLayout(this);
-            option.setGravity(Gravity.CENTER_VERTICAL);
-            option.setPadding(dp(14), dp(8), dp(14), dp(8));
-            option.setBackground(roundRect(Color.WHITE, 14));
+            option.setOrientation(LinearLayout.VERTICAL);
+            option.setGravity(Gravity.CENTER_HORIZONTAL);
+            option.setPadding(dp(6), dp(6), dp(6), dp(8));
+            option.setBackground(roundRect(Color.WHITE, 18));
 
+            FrameLayout previewWrap = new FrameLayout(this);
             View preview = new View(this);
             preview.setBackground(makePreview(style));
-            option.addView(preview, new LinearLayout.LayoutParams(dp(52), dp(52)));
+            previewWrap.addView(preview, new FrameLayout.LayoutParams(-1,-1));
+            if (currentStyle() == style) {
+                TextView check = text("✓", 18, Color.WHITE, true);
+                check.setGravity(Gravity.CENTER);
+                check.setBackground(roundRect(Color.rgb(0,122,255), 13));
+                FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(dp(27), dp(27), Gravity.TOP | Gravity.END);
+                cp.setMargins(0, dp(6), dp(6), 0);
+                previewWrap.addView(check, cp);
+            }
+            option.addView(previewWrap, new LinearLayout.LayoutParams(-1, dp(104)));
 
-            TextView name = text(names[i], 17, Color.rgb(28,28,30), false);
-            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0,-2,1f);
-            np.leftMargin = dp(14);
+            TextView name = text(WALLPAPER_NAMES[i], 14, Color.rgb(28,28,30), false);
+            name.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(30));
+            np.topMargin = dp(4);
             option.addView(name,np);
 
-            TextView check = text(currentStyle()==style ? "✓" : "", 20, Color.rgb(0,122,255), true);
-            option.addView(check,new LinearLayout.LayoutParams(dp(30),-2));
             option.setOnClickListener(v -> {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_STYLE, style).apply();
                 applyWallpapers(style, true);
                 root.removeView(dim);
-                Toast.makeText(this, "Visual aplicado", Toast.LENGTH_SHORT).show();
+                try { startActivity(new Intent(this, AuroraLauncherActivity.class)); } catch (Exception ignored) {}
+                Toast.makeText(this, WALLPAPER_NAMES[style] + " aplicado", Toast.LENGTH_SHORT).show();
             });
-            LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(-1, dp(68));
-            op.setMargins(0, dp(4), 0, dp(4));
-            sheet.addView(option, op);
+
+            GridLayout.LayoutParams gp = new GridLayout.LayoutParams();
+            gp.columnSpec = GridLayout.spec(i % 2, 1, 1f);
+            gp.width = 0;
+            gp.height = dp(154);
+            gp.setMargins(dp(4), dp(4), dp(4), dp(4));
+            option.setLayoutParams(gp);
+            grid.addView(option);
         }
+
+        scroller.addView(grid, new ScrollView.LayoutParams(-1,-2));
+        sheet.addView(scroller, new LinearLayout.LayoutParams(-1, dp(430)));
 
         TextView cancel = text("Cancelar", 17, Color.rgb(0,122,255), true);
         cancel.setGravity(Gravity.CENTER);
         cancel.setOnClickListener(v -> root.removeView(dim));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, dp(48));
-        cp.topMargin = dp(6);
-        sheet.addView(cancel, cp);
+        sheet.addView(cancel, new LinearLayout.LayoutParams(-1, dp(48)));
 
         FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        sp.leftMargin = dp(10); sp.rightMargin = dp(10); sp.bottomMargin = dp(10);
+        sp.leftMargin = dp(8); sp.rightMargin = dp(8); sp.bottomMargin = dp(8);
         dim.addView(sheet, sp);
         root.addView(dim, new FrameLayout.LayoutParams(-1,-1));
     }
 
     private GradientDrawable makePreview(int style) {
-        int[] colors;
-        if (style == 1) colors = new int[]{Color.rgb(48,104,165), Color.rgb(124,164,202)};
-        else if (style == 2) colors = new int[]{Color.rgb(23,25,31), Color.rgb(70,73,82)};
-        else colors = new int[]{Color.rgb(78,99,158), Color.rgb(157,96,167)};
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
-        g.setCornerRadius(dp(13));
+        int[] c = previewColors(style);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{c[0], c[1]});
+        g.setCornerRadius(dp(15));
         return g;
+    }
+
+    private int[] previewColors(int style) {
+        switch (style) {
+            case 1: return new int[]{Color.rgb(92,174,236), Color.rgb(97,112,202)};
+            case 2: return new int[]{Color.rgb(104,82,174), Color.rgb(184,111,207)};
+            case 3: return new int[]{Color.rgb(249,142,120), Color.rgb(171,91,177)};
+            case 4: return new int[]{Color.rgb(46,184,197), Color.rgb(71,123,198)};
+            case 5: return new int[]{Color.rgb(237,126,169), Color.rgb(164,99,191)};
+            case 6: return new int[]{Color.rgb(48,51,60), Color.rgb(99,104,116)};
+            case 7: return new int[]{Color.rgb(14,23,43), Color.rgb(54,44,86)};
+            default:return new int[]{Color.rgb(85,112,177), Color.rgb(162,104,178)};
+        }
     }
 
     private void openHomeEditor() {
@@ -252,28 +296,53 @@ public class AuroraSettingsActivity extends Activity {
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        int start, end, glow1, glow2;
-        if (style == 1) {
-            start = Color.rgb(23,61,106); end = Color.rgb(95,121,164);
-            glow1 = Color.argb(lock?105:178,102,194,230); glow2 = Color.argb(lock?95:160,111,84,202);
-        } else if (style == 2) {
-            start = Color.rgb(15,17,22); end = Color.rgb(45,47,55);
-            glow1 = Color.argb(lock?70:110,116,130,160); glow2 = Color.argb(lock?60:92,58,95,115);
-        } else {
-            start = Color.rgb(55,69,111); end = Color.rgb(125,82,134);
-            glow1 = Color.argb(lock?100:174,132,211,235); glow2 = Color.argb(lock?90:155,59,146,175);
-        }
-        if (lock) { start = darken(start,.74f); end = darken(end,.74f); }
+        int[] palette = wallpaperPalette(style, lock);
+        int start = palette[0], end = palette[1], glow1 = palette[2], glow2 = palette[3];
 
         p.setShader(new LinearGradient(0,0,w,h,start,end, Shader.TileMode.CLAMP));
         c.drawRect(0,0,w,h,p);
-        p.setShader(new RadialGradient(w*.14f,h*.22f,w*.60f,glow1,Color.TRANSPARENT,Shader.TileMode.CLAMP));
-        c.drawCircle(w*.14f,h*.22f,w*.60f,p);
-        p.setShader(new RadialGradient(w*.88f,h*.70f,w*.68f,glow2,Color.TRANSPARENT,Shader.TileMode.CLAMP));
-        c.drawCircle(w*.88f,h*.70f,w*.68f,p);
+        p.setShader(new RadialGradient(w*.15f,h*.22f,w*.61f,glow1,Color.TRANSPARENT,Shader.TileMode.CLAMP));
+        c.drawCircle(w*.15f,h*.22f,w*.61f,p);
+        p.setShader(new RadialGradient(w*.86f,h*.72f,w*.69f,glow2,Color.TRANSPARENT,Shader.TileMode.CLAMP));
+        c.drawCircle(w*.86f,h*.72f,w*.69f,p);
         p.setShader(null);
         return b;
+    }
+
+    private int[] wallpaperPalette(int style, boolean lock) {
+        int start, end, g1, g2;
+        switch (style) {
+            case 1:
+                start=Color.rgb(54,117,190); end=Color.rgb(112,109,188);
+                g1=Color.argb(176,137,220,245); g2=Color.argb(156,104,122,224); break;
+            case 2:
+                start=Color.rgb(73,55,132); end=Color.rgb(151,82,167);
+                g1=Color.argb(170,181,142,235); g2=Color.argb(150,225,132,201); break;
+            case 3:
+                start=Color.rgb(189,87,114); end=Color.rgb(103,58,139);
+                g1=Color.argb(174,255,183,135); g2=Color.argb(150,216,108,190); break;
+            case 4:
+                start=Color.rgb(30,126,146); end=Color.rgb(58,82,160);
+                g1=Color.argb(174,105,232,215); g2=Color.argb(148,84,153,229); break;
+            case 5:
+                start=Color.rgb(166,72,121); end=Color.rgb(102,60,143);
+                g1=Color.argb(172,255,170,197); g2=Color.argb(148,211,129,228); break;
+            case 6:
+                start=Color.rgb(34,37,44); end=Color.rgb(74,78,88);
+                g1=Color.argb(112,136,149,172); g2=Color.argb(90,79,112,129); break;
+            case 7:
+                start=Color.rgb(9,18,36); end=Color.rgb(37,30,69);
+                g1=Color.argb(122,52,101,171); g2=Color.argb(106,110,65,151); break;
+            default:
+                start=Color.rgb(55,69,111); end=Color.rgb(125,82,134);
+                g1=Color.argb(174,132,211,235); g2=Color.argb(155,59,146,175); break;
+        }
+        if (lock) {
+            start=darken(start,.72f); end=darken(end,.72f);
+            g1=(g1 & 0x00FFFFFF) | (88 << 24);
+            g2=(g2 & 0x00FFFFFF) | (78 << 24);
+        }
+        return new int[]{start,end,g1,g2};
     }
 
     private int darken(int color, float f) {
