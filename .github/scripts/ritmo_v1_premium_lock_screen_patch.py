@@ -107,3 +107,5 @@ html.dark .premium-lock-avatar-img{box-shadow:0 8px 26px rgba(0,0,0,.18)}
 '''
 cssp.write_text(css)
 print('Ritmo V1: tela de desbloqueio simplificada, premium e focada em biometria/senha.')
+
+# pipeline refresh: publicar correção do instalador PWA
