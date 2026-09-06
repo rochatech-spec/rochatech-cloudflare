@@ -21,7 +21,6 @@ public class PinWidgetActivity extends Activity {
         host = new AppWidgetHost(this, HOST_ID);
         LauncherApps launcherApps = (LauncherApps)getSystemService(Context.LAUNCHER_APPS_SERVICE);
         request = launcherApps != null ? launcherApps.getPinItemRequest(getIntent()) : null;
-
         if (request == null || request.getRequestType() != LauncherApps.PinItemRequest.REQUEST_TYPE_APPWIDGET) {
             finish();
             return;
@@ -48,7 +47,7 @@ public class PinWidgetActivity extends Activity {
                     try { host.deleteAppWidgetId(old); } catch (Exception ignored) {}
                 }
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_WIDGET, id).apply();
-                Intent home = new Intent(this, AuroraLauncherActivity.class);
+                Intent home = new Intent(this, PremiumLauncherActivity.class);
                 home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 startActivity(home);
             } else {
