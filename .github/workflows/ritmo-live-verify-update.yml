@@ -1,0 +1,56 @@
+name: Ritmo V1 live verify update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-live-verify-update.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Reconstruir pacote atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo && mkdir -p /tmp/ritmo
+          cat ritmo-v6/part-* > /tmp/ritmo.b64
+          base64 -d /tmp/ritmo.b64 > /tmp/ritmo.tgz
+          tar -xzf /tmp/ritmo.tgz -C /tmp/ritmo
+          cd /tmp/ritmo
+          npm install --no-audit --no-fund >/dev/null
+          npm run build >/dev/null
+      - name: Validar arquivos realmente servidos
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://ritmo-br.pages.dev'
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE/app.js?verify=$GITHUB_SHA" -o /tmp/live-app.js
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE/styles.css?verify=$GITHUB_SHA" -o /tmp/live-styles.css
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE/sw.js?verify=$GITHUB_SHA" -o /tmp/live-sw.js
+          curl -fsSI -H 'Cache-Control: no-cache' "$BASE/app.js?verify=$GITHUB_SHA" -o /tmp/app-headers.txt
+          grep -Fq 'data-system-update' /tmp/live-app.js
+          grep -Fq 'updateSystemNow' /tmp/live-app.js
+          grep -Fq 'shortcutDraftKeys' /tmp/live-app.js
+          grep -Fq 'data-shortcut-move' /tmp/live-app.js
+          grep -Fq 'function fabHtml()' /tmp/live-app.js
+          grep -Fq "const CACHE='ritmo-shell-v1-current'" /tmp/live-sw.js
+          grep -Fq 'CLEAR_RITMO_CACHE' /tmp/live-sw.js
+          grep -Fq "cache:'no-store'" /tmp/live-sw.js
+          cmp -s /tmp/ritmo/dist/app.js /tmp/live-app.js
+          cmp -s /tmp/ritmo/dist/styles.css /tmp/live-styles.css
+          cmp -s /tmp/ritmo/dist/sw.js /tmp/live-sw.js
+          echo 'LIVE_APP_MATCH=YES'
+          echo 'LIVE_CSS_MATCH=YES'
+          echo 'LIVE_SW_MATCH=YES'
+          echo 'UPDATE_BUTTON=YES'
+          echo 'CACHE_CLEAR=YES'
