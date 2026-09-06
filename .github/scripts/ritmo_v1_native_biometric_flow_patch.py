@@ -44,3 +44,4 @@ if not perf.exists():
  raise SystemExit('Patch de desempenho nativo não encontrado')
 ns={'__name__':'__main__','__file__':str(perf)}
 exec(compile(perf.read_text(),str(perf),'exec'),ns,ns)
+# revisão de desempenho 2
