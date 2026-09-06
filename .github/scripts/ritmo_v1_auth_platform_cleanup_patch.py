@@ -50,3 +50,10 @@ if '<strong>Desbloqueio do aparelho</strong>' not in a:raise SystemExit('Rótulo
 
 app.write_text(a);worker.write_text(w);indexp.write_text(idx);cssp.write_text(css)
 print('Ritmo V1: Turnstile removido e desbloqueio do aparelho consolidado; proteções essenciais preservadas.')
+
+# A última etapa cuida somente da experiência de lançamento: primeiro frame com
+# o tema correto e rota inicial nativa, sem expor detalhes técnicos ao usuário.
+launch=Path(__file__).with_name('ritmo_v1_native_launch_theme_patch.py')
+if not launch.exists():raise SystemExit('Patch de lançamento nativo não encontrado')
+ns={'__name__':'__main__','__file__':str(launch)}
+exec(compile(launch.read_text(),str(launch),'exec'),ns,ns)
