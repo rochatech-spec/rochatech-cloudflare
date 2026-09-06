@@ -60,10 +60,14 @@ jobs:
               for token in ['\nfunction ','\nasync function ']:
                   q=src.find(token,p+1)
                   if q>p:c.append(q)
-              q=min(c) if c else min(len(src),p+9000)
-              print(f'\n=== FUNC {name} ===\n'+src[p:q][:9000])
-          for n in ['currentStats','homePage','itemMoney','modalHtml','calendarPage','insightsPage','notifications']:
+              q=min(c) if c else min(len(src),p+12000)
+              print(f'\n=== FUNC {name} ===\n'+src[p:q][:12000])
+          for n in ['currentStats','homePage','itemMoney','modalHtml','calendarPage','insightsPage','insightHtml','notifications','bindApp']:
               func(app,n)
+          print('\n=== SUBMIT DATAFORM ===')
+          for needle in ["dataForm","FormData","data-pay-expense","data-day"]:
+              p=app.find(needle)
+              if p>=0: print('\n---',needle,'---\n',app[max(0,p-2200):p+7000])
           print('\n=== SCHEMA INCOMES/EXPENSES/DEBTS ===')
           for table in ['incomes','expenses','debts','debt_events','shared_incomes','shared_expenses','shared_debts','shared_debt_events']:
               for prefix in [f'CREATE TABLE IF NOT EXISTS {table}',f'CREATE TABLE {table}']:
@@ -73,5 +77,5 @@ jobs:
           print('\n=== WORKER FINANCE ROUTES ===')
           for needle in ["path==='/api/income'","path==='/api/shared/income'","INSERT INTO incomes","UPDATE incomes","INSERT INTO shared_incomes","UPDATE shared_incomes","INSERT INTO expenses","UPDATE expenses","INSERT INTO shared_expenses","UPDATE shared_expenses"]:
               p=worker.find(needle)
-              if p>=0: print('\n---',needle,'---\n',worker[max(0,p-1500):p+5500])
+              if p>=0: print('\n---',needle,'---\n',worker[max(0,p-1800):p+7000])
           PY
