@@ -57,8 +57,14 @@ if not launch.exists():raise SystemExit('Patch de lançamento nativo não encont
 ns={'__name__':'__main__','__file__':str(launch)}
 exec(compile(launch.read_text(),str(launch),'exec'),ns,ns)
 
-# A auditoria comercial é obrigatoriamente a última transformação do aplicativo.
+# Prontidão comercial: correções finais e auditoria.
 commercial=Path(__file__).with_name('ritmo_v1_commercial_readiness_patch.py')
 if not commercial.exists():raise SystemExit('Patch de prontidão comercial não encontrado')
 ns2={'__name__':'__main__','__file__':str(commercial)}
 exec(compile(commercial.read_text(),str(commercial),'exec'),ns2,ns2)
+
+# O teste final opera pela interface real, sem acesso privilegiado ao estado interno.
+dom_audit=Path(__file__).with_name('ritmo_v1_commercial_dom_audit_patch.py')
+if not dom_audit.exists():raise SystemExit('Auditoria comercial de interface não encontrada')
+ns3={'__name__':'__main__','__file__':str(dom_audit)}
+exec(compile(dom_audit.read_text(),str(dom_audit),'exec'),ns3,ns3)
