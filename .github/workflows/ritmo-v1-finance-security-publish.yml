@@ -58,33 +58,98 @@ jobs:
           python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_financial_intelligence_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_lock_patch.py /tmp/ritmo-v1
-      - name: Validar regras e build
+      - name: Bateria de regressão e regras financeiras
         working-directory: /tmp/ritmo-v1
         shell: bash
         run: |
           set -euo pipefail
+          echo '1/8 Sintaxe JS e schema'
           node --check public/app.js
           node --check _worker.js
           node --check public/sw.js
+          rm -f /tmp/ritmo-test.db
           sqlite3 /tmp/ritmo-test.db < schema.sql
+
+          echo '2/8 Inteligência financeira'
           grep -Fq "function incomeIsRealized" public/app.js
+          grep -Fq "realizedIn=d.incomes.filter(incomeIsRealized)" public/app.js
+          grep -Fq "futureIn=d.incomes.filter" public/app.js
+          grep -Fq "balance=income-paid" public/app.js
+          grep -Fq "forecast=balance+receivable-pending" public/app.js
           grep -Fq "A receber" public/app.js
+          grep -Fq "A pagar" public/app.js
           grep -Fq "Saldo atual" public/app.js
           grep -Fq "function debtDueState" public/app.js
           grep -Fq "data-receive-income" public/app.js
+          node - <<'NODE'
+          const today='2026-09-06';
+          const incomes=[{amount:1200,date:'2026-09-05'},{amount:5000,date:'2026-10-05'}];
+          const expenses=[{amount:200,date:'2026-09-04',status:'pago'},{amount:400,date:'2026-09-20',status:'pendente'}];
+          const realizedIn=incomes.filter(x=>x.date<=today);
+          const futureIn=incomes.filter(x=>x.date>today);
+          const realizedOut=expenses.filter(x=>x.status==='pago'&&x.date<=today);
+          const futureOut=expenses.filter(x=>!(x.status==='pago'&&x.date<=today));
+          const income=realizedIn.reduce((s,x)=>s+x.amount,0), paid=realizedOut.reduce((s,x)=>s+x.amount,0);
+          const receivable=futureIn.reduce((s,x)=>s+x.amount,0), pending=futureOut.reduce((s,x)=>s+x.amount,0);
+          const balance=income-paid, forecast=balance+receivable-pending;
+          if(balance!==1000||receivable!==5000||pending!==400||forecast!==5600) throw new Error('Regra realizado/previsto falhou');
+          console.log('Regra realizado/previsto OK');
+          NODE
+
+          echo '3/8 Bloqueio e revalidação'
           grep -Fq "/api/auth/reverify" _worker.js
           grep -Fq "sessionStorage.getItem(k)==='1'" public/app.js
-          grep -Fq "Em segundo plano, ele só bloqueia" public/app.js
+          grep -Fq "function ritmoRenderAppCore" public/app.js
+          grep -Fq "function renderApp(...args){if(state.data&&!ritmoSessionUnlocked())" public/app.js
+          grep -Fq "Em segundo plano, o Ritmo permanece aberto" public/app.js
           grep -Fq "Manter conta salva neste aparelho" public/app.js
+          grep -Fq "document.hidden)clearTimeout(ritmoLockTimer)" public/app.js
           if grep -Fq "root.insertAdjacentHTML('beforeend',\`<div class=\"lock\"" public/app.js; then echo 'Bloqueio antigo ainda presente'; exit 1; fi
+
+          echo '4/8 Auditoria de credenciais locais'
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('public/app.js').read_text().lower()
+          bad=['localstorage.setitem(\'password','localstorage.setitem("password','localstorage.setitem(`password','ritmo:saved-password']
+          if any(x in s for x in bad): raise SystemExit('Senha encontrada em armazenamento local')
+          if 'ritmo:saved-account' not in s: raise SystemExit('Conta salva não encontrada')
+          print('Nenhuma senha persistida localmente')
+          PY
+
+          echo '5/8 PWA e experiência nativa'
+          grep -Fq '"display": "standalone"' manifest.webmanifest
+          grep -Fq '"start_url": "/?source=pwa"' manifest.webmanifest
+          grep -Fq 'viewport-fit=cover' public/index.html
+          grep -Fq 'navigator.storage.persist' public/app.js
+          grep -Fq 'ritmoNativeCloudRestore' public/app.js
+
+          echo '6/8 Regressões visuais e navegação'
+          grep -Fq 'action-sheet' public/styles.css
+          grep -Fq 'safe-area-inset-top' public/styles.css
+          grep -Fq 'data-shortcut-drag' public/app.js
+          grep -Fq 'ritmoStatusBarSync' public/app.js
+          grep -Fq 'secure-lock' public/styles.css
+          grep -Fq 'cash-forecast' public/styles.css
+
+          echo '7/8 Build de produção'
           npm install --no-audit --no-fund
           npm run build
           node --check dist/app.js
           node --check dist/_worker.js
+          node --check dist/sw.js
           grep -Fq "function incomeIsRealized" dist/app.js
           grep -Fq "/api/auth/reverify" dist/_worker.js
+          grep -Fq "function ritmoRenderAppCore" dist/app.js
           grep -Fq "secure-lock" dist/styles.css
           grep -Fq "cash-forecast" dist/styles.css
+
+          echo '8/8 Artefatos essenciais'
+          test -s dist/index.html
+          test -s dist/app.js
+          test -s dist/styles.css
+          test -s dist/manifest.webmanifest
+          test -s dist/sw.js
+          echo 'Bateria pré-publicação aprovada.'
       - name: Iniciar autorização Cloudflare
         id: auth
         shell: bash
@@ -149,4 +214,5 @@ jobs:
           grep -q '"ok":true' /tmp/health.json
           grep -Fq 'Manter conta salva neste aparelho' /tmp/app.js
           grep -Fq 'A receber' /tmp/app.js
+          grep -Fq 'ritmoRenderAppCore' /tmp/app.js
           echo "Ritmo V1: inteligência financeira e bloqueio seguro validados em produção."
