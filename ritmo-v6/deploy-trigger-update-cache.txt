@@ -1,0 +1,1 @@
+Ritmo V1 - publicar atualização limpa de cache e service worker.
