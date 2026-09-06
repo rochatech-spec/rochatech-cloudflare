@@ -154,3 +154,9 @@ for need in ['ritmoFetchScopeSnapshot','ritmoScheduleScopePrefetch','ritmoTransi
 
 app.write_text(a);worker.write_text(w);cssp.write_text(css)
 print('Ritmo V1: troca Meu/Nosso pré-carregada e transições globais suavizadas em mobile e desktop.')
+
+# Depois da fluidez, aplica a identidade visual leve dos dois perfis financeiros.
+profiles=Path(__file__).with_name('ritmo_v1_light_profiles_ui_patch.py')
+if not profiles.exists():raise SystemExit('Patch UI Light de perfis não encontrado')
+ns_profiles={'__name__':'__main__','__file__':str(profiles)}
+exec(compile(profiles.read_text(),str(profiles),'exec'),ns_profiles,ns_profiles)
