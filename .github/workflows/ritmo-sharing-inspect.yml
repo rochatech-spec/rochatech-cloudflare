@@ -1,0 +1,35 @@
+name: Ritmo V1 sharing inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-sharing-inspect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruir pacote atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo && mkdir -p /tmp/ritmo
+          cat ritmo-v6/part-* > /tmp/ritmo.b64
+          base64 -d /tmp/ritmo.b64 > /tmp/ritmo.tgz
+          tar -xzf /tmp/ritmo.tgz -C /tmp/ritmo
+      - name: Inspecionar schema e APIs para compartilhamento
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== SCHEMA ==='
+          cat /tmp/ritmo/schema.sql
+          echo '=== GOAL API ==='
+          grep -nE -C 5 "goals|goal_contributions|api/goals|api/bootstrap|FROM incomes|FROM expenses|FROM debts" /tmp/ritmo/_worker.js || true
+          echo '=== FORMS / GOALS ==='
+          grep -nE -C 4 "function goalsPage|type==='goal'|goalId|contribution|shortcutCatalog" /tmp/ritmo/public/app.js || true
