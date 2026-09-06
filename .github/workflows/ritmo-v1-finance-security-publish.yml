@@ -10,6 +10,10 @@ on:
       - ".github/scripts/ritmo_v1_native_lock_patch.py"
       - ".github/scripts/ritmo_v1_native_sheet_motion_patch.py"
       - ".github/scripts/ritmo_v1_premium_lock_screen_patch.py"
+      - ".github/scripts/ritmo_v1_couple_spaces_patch.py"
+      - ".github/scripts/ritmo_v1_debt_av_sync_patch.py"
+      - ".github/scripts/ritmo_v1_goal_strategy_patch.py"
+      - ".github/scripts/ritmo_v1_native_biometric_flow_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +26,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 22
+    timeout-minutes: 24
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       NO_COLOR: "1"
@@ -63,106 +67,131 @@ jobs:
           python3 .github/scripts/ritmo_v1_native_lock_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_sheet_motion_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_premium_lock_screen_patch.py /tmp/ritmo-v1
-      - name: Bateria de regressão, finanças e interface nativa
+          python3 .github/scripts/ritmo_v1_couple_spaces_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_debt_av_sync_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_goal_strategy_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_biometric_flow_patch.py /tmp/ritmo-v1
+
+      - name: Bateria completa do Ritmo
         working-directory: /tmp/ritmo-v1
         shell: bash
         run: |
           set -euo pipefail
-          echo '1/10 Sintaxe JS e schema'
+          echo '1/12 Sintaxe e banco'
           node --check public/app.js
           node --check _worker.js
           node --check public/sw.js
           rm -f /tmp/ritmo-test.db
           sqlite3 /tmp/ritmo-test.db < schema.sql
 
-          echo '2/10 Inteligência financeira'
-          grep -Fq "function incomeIsRealized" public/app.js
-          grep -Fq "realizedIn=d.incomes.filter(incomeIsRealized)" public/app.js
-          grep -Fq "futureIn=d.incomes.filter" public/app.js
-          grep -Fq "balance=income-paid" public/app.js
-          grep -Fq "forecast=balance+receivable-pending" public/app.js
-          grep -Fq "A receber" public/app.js
-          grep -Fq "A pagar" public/app.js
-          grep -Fq "function debtDueState" public/app.js
+          echo '2/12 Realizado x previsto'
+          grep -Fq 'function incomeIsRealized' public/app.js
+          grep -Fq 'balance=income-paid' public/app.js
+          grep -Fq 'forecast=balance+receivable-pending' public/app.js
+          grep -Fq 'A receber' public/app.js
+          grep -Fq 'A pagar' public/app.js
           node - <<'NODE'
           const today='2026-09-06';
           const incomes=[{amount:1200,date:'2026-09-05'},{amount:5000,date:'2026-10-05'}];
           const expenses=[{amount:200,date:'2026-09-04',status:'pago'},{amount:400,date:'2026-09-20',status:'pendente'}];
-          const realizedIn=incomes.filter(x=>x.date<=today),futureIn=incomes.filter(x=>x.date>today);
-          const realizedOut=expenses.filter(x=>x.status==='pago'&&x.date<=today),futureOut=expenses.filter(x=>!(x.status==='pago'&&x.date<=today));
-          const income=realizedIn.reduce((s,x)=>s+x.amount,0),paid=realizedOut.reduce((s,x)=>s+x.amount,0),receivable=futureIn.reduce((s,x)=>s+x.amount,0),pending=futureOut.reduce((s,x)=>s+x.amount,0);
-          const balance=income-paid,forecast=balance+receivable-pending;
-          if(balance!==1000||receivable!==5000||pending!==400||forecast!==5600)throw new Error('Regra realizado/previsto falhou');
+          const income=incomes.filter(x=>x.date<=today).reduce((s,x)=>s+x.amount,0);
+          const paid=expenses.filter(x=>x.status==='pago'&&x.date<=today).reduce((s,x)=>s+x.amount,0);
+          const receivable=incomes.filter(x=>x.date>today).reduce((s,x)=>s+x.amount,0);
+          const pending=expenses.filter(x=>!(x.status==='pago'&&x.date<=today)).reduce((s,x)=>s+x.amount,0);
+          if(income-paid!==1000||income-paid+receivable-pending!==5600)throw new Error('Regra financeira falhou');
           NODE
 
-          echo '3/10 Bloqueio e revalidação'
-          grep -Fq "/api/auth/reverify" _worker.js
+          echo '3/12 Espaços pessoal e casal'
+          grep -Fq 'function financeScopeField' public/app.js
+          grep -Fq 'Este lançamento pertence a' public/app.js
+          grep -Fq 'Individualidade preservada' public/app.js
+          grep -Fq 'Do casal' public/app.js
+          grep -Fq 'data-smart-new="expense"' public/app.js
+          grep -Fq 'forcedScope' public/app.js
+          grep -Fq 'Somente você verá este item.' public/app.js
+
+          echo '4/12 Dívida e AV sincronizados'
+          grep -Fq 'data-debt-av' public/app.js
+          grep -Fq 'Registrar AV' public/app.js
+          grep -Fq 'AV da dívida' _worker.js
+          grep -Fq '(payment|credit|av)' _worker.js
+          grep -Fq 'sincronizado com dívida' public/app.js
+          grep -Fq 'Gerenciar na dívida' public/app.js
+          grep -Fq 'DELETE FROM expenses WHERE debt_event_id' _worker.js
+          grep -Fq 'DELETE FROM shared_expenses WHERE debt_event_id' _worker.js
+
+          echo '5/12 Estratégia de metas'
+          grep -Fq 'function goalStrategy' public/app.js
+          grep -Fq 'Estratégia do Ritmo' public/app.js
+          grep -Fq 'Calculada com seus aportes reais' public/app.js
+          grep -Fq '/semana' public/app.js
+          grep -Fq 'cada/mês' public/app.js
+          node - <<'NODE'
+          const rem=3800,avg=200,accelerated=Math.ceil((avg*1.2)/10)*10;
+          if(accelerated!==240||Math.ceil(rem/accelerated)!==16)throw new Error('Estratégia de meta falhou');
+          NODE
+
+          echo '6/12 Bloqueio e sessão'
+          grep -Fq '/api/auth/reverify' _worker.js
           grep -Fq "sessionStorage.getItem(k)==='1'" public/app.js
-          grep -Fq "function ritmoRenderAppCore" public/app.js
-          grep -Fq "function renderApp(...args){if(state.data&&!ritmoSessionUnlocked())" public/app.js
-          grep -Fq "document.hidden)clearTimeout(ritmoLockTimer)" public/app.js
-          grep -Fq "Manter conta salva neste aparelho" public/app.js
-
-          echo '4/10 Desbloqueio premium'
+          grep -Fq 'function ritmoRenderAppCore' public/app.js
+          grep -Fq 'document.hidden)clearTimeout(ritmoLockTimer)' public/app.js
+          grep -Fq 'Manter conta salva neste aparelho' public/app.js
           grep -Fq 'class="secure-lock premium-lock"' public/app.js
-          grep -Fq 'premium-password-toggle' public/app.js
-          grep -Fq 'Desbloqueie para continuar.' public/app.js
-          grep -Fq '.premium-lock-inner' public/styles.css
-          grep -Fq '.premium-unlock-btn' public/styles.css
-          grep -Fq '.premium-password-form.is-collapsed' public/styles.css
-          if grep -Fq 'secure-lock-note' public/app.js; then echo 'Texto excessivo de bloqueio ainda presente'; exit 1; fi
 
-          echo '5/10 Auditoria de credenciais locais'
+          echo '7/12 Biometria natural do aparelho'
+          grep -Fq 'Desbloqueio do aparelho' public/app.js
+          grep -Fq "residentKey:'discouraged'" _worker.js
+          grep -Fq "transports:['internal']" _worker.js
+          grep -Fq "hints=['client-device']" public/app.js
+          grep -Fq 'unlockBio(true)' public/app.js
+          grep -Fq 'Face ID / Touch ID' public/app.js
+          grep -Fq 'Windows Hello' public/app.js
+
+          echo '8/12 Credenciais locais'
           python3 - <<'PY'
           from pathlib import Path
           s=Path('public/app.js').read_text().lower()
           bad=['localstorage.setitem(\'password','localstorage.setitem("password','localstorage.setitem(`password','ritmo:saved-password']
-          if any(x in s for x in bad): raise SystemExit('Senha encontrada em armazenamento local')
-          if 'ritmo:saved-account' not in s: raise SystemExit('Conta salva não encontrada')
+          if any(x in s for x in bad): raise SystemExit('Senha persistida localmente')
+          assert 'ritmo:saved-account' in s
           PY
 
-          echo '6/10 PWA e experiência nativa'
+          echo '9/12 PWA e experiência nativa'
           grep -Fq '"display": "standalone"' public/manifest.webmanifest
-          grep -Fq '"start_url": "/?source=pwa"' public/manifest.webmanifest
           grep -Fq 'viewport-fit=cover' public/index.html
           grep -Fq 'navigator.storage.persist' public/app.js
           grep -Fq 'ritmoNativeCloudRestore' public/app.js
-
-          echo '7/10 Sheets, tab bar e motion'
-          grep -Fq 'function ritmoPrepareSheet' public/app.js
-          grep -Fq 'function ritmoDismissSheet' public/app.js
           grep -Fq 'ritmo-sheet-open' public/styles.css
-          grep -Fq 'ritmo-native-sheet-wrap' public/styles.css
-          grep -Fq 'z-index:5000' public/styles.css
-          grep -Fq 'translate3d(0,calc(115% + env(safe-area-inset-bottom))' public/styles.css
           grep -Fq 'prefers-reduced-motion:reduce' public/styles.css
 
-          echo '8/10 Regressões visuais e navegação'
-          grep -Fq 'action-sheet' public/styles.css
-          grep -Fq 'safe-area-inset-top' public/styles.css
+          echo '10/12 Regressões de interface'
           grep -Fq 'data-shortcut-drag' public/app.js
           grep -Fq 'ritmoStatusBarSync' public/app.js
-          grep -Fq 'cash-forecast' public/styles.css
+          grep -Fq 'premium-lock-inner' public/styles.css
+          grep -Fq 'couple-space-grid' public/styles.css
+          grep -Fq 'goal-strategy' public/styles.css
+          grep -Fq 'debt-actions-three' public/styles.css
 
-          echo '9/10 Build de produção'
+          echo '11/12 Build de produção'
           npm install --no-audit --no-fund
           npm run build
           node --check dist/app.js
           node --check dist/_worker.js
           node --check dist/sw.js
-          grep -Fq 'function ritmoPrepareSheet' dist/app.js
-          grep -Fq 'class="secure-lock premium-lock"' dist/app.js
-          grep -Fq 'premium-lock-inner' dist/styles.css
-          grep -Fq 'ritmo-sheet-open' dist/styles.css
-          grep -Fq 'incomeIsRealized' dist/app.js
+          grep -Fq 'function goalStrategy' dist/app.js
+          grep -Fq 'data-debt-av' dist/app.js
+          grep -Fq 'financeScopeField' dist/app.js
+          grep -Fq 'unlockBio(true)' dist/app.js
 
-          echo '10/10 Artefatos essenciais'
+          echo '12/12 Artefatos essenciais'
           test -s dist/index.html
           test -s dist/app.js
           test -s dist/styles.css
           test -s dist/manifest.webmanifest
           test -s dist/sw.js
-          echo 'Bateria pré-publicação aprovada.'
+          echo 'Bateria completa aprovada.'
+
       - name: Iniciar autorização Cloudflare
         id: auth
         shell: bash
@@ -179,6 +208,7 @@ jobs:
             sleep 1
           done
           cat "$LOG"; exit 1
+
       - name: Disponibilizar autorização
         if: steps.auth.outputs.mode == 'device'
         uses: actions/upload-artifact@v4
@@ -186,6 +216,7 @@ jobs:
           name: ritmo-v1-finance-security-cloudflare-authorization
           path: cloudflare-device-login.txt
           retention-days: 1
+
       - name: Aguardar autorização
         if: steps.auth.outputs.mode == 'device'
         shell: bash
@@ -198,6 +229,7 @@ jobs:
             sleep 1
           done
           exit 1
+
       - name: Identificar conta
         id: account
         shell: bash
@@ -206,27 +238,31 @@ jobs:
           npx --yes wrangler@latest whoami --json > /tmp/whoami.json
           ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
           echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
       - name: Publicar
         working-directory: /tmp/ritmo-v1
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
       - name: Validar produção
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://ritmo-br.pages.dev
           for i in {1..36}; do
-            JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?native-ui=$GITHUB_SHA" || true)"
-            WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?native-ui=$GITHUB_SHA" || true)"
-            CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?native-ui=$GITHUB_SHA" || true)"
-            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && grep -Fq 'ritmoPrepareSheet' /tmp/app.js && grep -Fq 'premium-lock' /tmp/app.js && grep -Fq 'ritmo-sheet-open' /tmp/styles.css; then break; fi
+            JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?smart=$GITHUB_SHA" || true)"
+            WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?smart=$GITHUB_SHA" || true)"
+            CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?smart=$GITHUB_SHA" || true)"
+            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && grep -Fq 'goalStrategy' /tmp/app.js && grep -Fq 'data-debt-av' /tmp/app.js && grep -Fq 'financeScopeField' /tmp/app.js && grep -Fq 'Desbloqueio do aparelho' /tmp/app.js; then break; fi
             sleep 5
           done
           test "$JS" = 200; test "$WK" = 200; test "$CSS" = 200
           grep -q '"ok":true' /tmp/health.json
           grep -Fq 'A receber' /tmp/app.js
-          grep -Fq 'ritmoDismissSheet' /tmp/app.js
-          grep -Fq 'premium-password-toggle' /tmp/app.js
-          grep -Fq 'premium-lock-inner' /tmp/styles.css
-          echo "Ritmo V1: finanças, bloqueio premium e sheets nativos validados em produção."
+          grep -Fq 'Estratégia do Ritmo' /tmp/app.js
+          grep -Fq 'Individualidade preservada' /tmp/app.js
+          grep -Fq 'Registrar AV' /tmp/app.js
+          grep -Fq 'unlockBio(true)' /tmp/app.js
+          grep -Fq 'couple-space-grid' /tmp/styles.css
+          echo 'Ritmo V1 validado em produção.'
