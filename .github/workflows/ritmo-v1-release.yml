@@ -63,7 +63,6 @@ jobs:
           rm -f /tmp/ritmo-schema-test.db
           sqlite3 /tmp/ritmo-schema-test.db < /tmp/ritmo-v1/schema.sql
 
-          # Identidade, Menu e atualização
           grep -Fq "['more','Menu','menu']" /tmp/ritmo-v1/public/app.js
           grep -Fq "head('Menu'" /tmp/ritmo-v1/public/app.js
           grep -Fq "menu-update-btn" /tmp/ritmo-v1/public/app.js
@@ -74,7 +73,6 @@ jobs:
           test -s /tmp/ritmo-v1/public/ritmo-icon-192.png
           test -s /tmp/ritmo-v1/public/ritmo-icon-512.png
 
-          # Filtros e atalhos cloud-first
           grep -Fq "Últimos 7 dias" /tmp/ritmo-v1/public/app.js
           grep -Fq "Últimos 15 dias" /tmp/ritmo-v1/public/app.js
           grep -Fq "Últimos 30 dias" /tmp/ritmo-v1/public/app.js
@@ -84,7 +82,6 @@ jobs:
           grep -Fq "mobile_shortcuts" /tmp/ritmo-v1/_worker.js
           grep -Fq "user_mobile_settings" /tmp/ritmo-v1/schema.sql
 
-          # Compartilhamento e metas Individual/Juntos
           grep -Fq "CREATE TABLE IF NOT EXISTS partnerships" /tmp/ritmo-v1/schema.sql
           grep -Fq "CREATE TABLE IF NOT EXISTS shared_goals" /tmp/ritmo-v1/schema.sql
           grep -Fq "/api/sharing/invite" /tmp/ritmo-v1/_worker.js
@@ -95,24 +92,20 @@ jobs:
           grep -Fq "goal_scope" /tmp/ritmo-v1/public/app.js
           grep -Fq "Juntos" /tmp/ritmo-v1/public/app.js
 
-          # Organização estilo iOS, Personalização e perfil real
           grep -Fq "Personalização" /tmp/ritmo-v1/public/app.js
           grep -Fq "ios-menu-profile" /tmp/ritmo-v1/public/app.js
           grep -Fq "profile-ios-hero" /tmp/ritmo-v1/public/app.js
           grep -Fq "data-profile-photo" /tmp/ritmo-v1/public/app.js
           grep -Fq "optimizeAvatar" /tmp/ritmo-v1/public/app.js
-          grep -Fq "avatar cloud-first" /tmp/ritmo-v1/_worker.js || true
           grep -Fq "getWithMetadata" /tmp/ritmo-v1/_worker.js
-          grep -Fq "avatar:${userId}" /tmp/ritmo-v1/_worker.js
+          grep -Fq 'avatar:${userId}' /tmp/ritmo-v1/_worker.js
 
-          # Segurança do aparelho
           grep -Fq "Biometria e chave de acesso" /tmp/ritmo-v1/public/app.js
           grep -Fq "Samsung Pass" /tmp/ritmo-v1/public/app.js
           grep -Fq "Face ID/Touch ID" /tmp/ritmo-v1/public/app.js
           grep -Fq "authenticatorAttachment:'platform'" /tmp/ritmo-v1/_worker.js
           grep -Fq "userVerification:'required'" /tmp/ritmo-v1/_worker.js
 
-          # Boas-vindas e instalação
           grep -Fq "ritmoWelcomeMount" /tmp/ritmo-v1/public/app.js
           grep -Fq "Instale no Android" /tmp/ritmo-v1/public/app.js
           grep -Fq "Instale no iPhone ou iPad" /tmp/ritmo-v1/public/app.js
@@ -120,7 +113,6 @@ jobs:
           grep -Fq "Desenvolvedor: Flávio Rocha" /tmp/ritmo-v1/public/app.js
           grep -Fq ".ritmo-welcome" /tmp/ritmo-v1/public/styles.css
 
-          # Dados importantes nunca viram localStorage.
           ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*partnership|localStorage\.(setItem|getItem).*view_scope" /tmp/ritmo-v1/public/app.js
 
       - name: Build de produção
@@ -308,6 +300,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE="https://ritmo-br.pages.dev"
+          HC=000; JS=000; CSS=000; SW=000
           for i in {1..36}; do
             HC="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?build=$GITHUB_SHA" || true)"
             JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?build=$GITHUB_SHA" || true)"
