@@ -60,6 +60,15 @@ app.write_text(a)
 indexp.write_text(idx)
 cssp.write_text(css)
 
+# O smoke de Chrome agora exige renderização rápida do login e rejeita qualquer
+# splash/recovery no primeiro quadro útil.
+smoke=root/'ci-browser-smoke.mjs'
+if smoke.exists():
+    s=smoke.read_text()
+    s=s.replace("'--virtual-time-budget=5000'","'--virtual-time-budget=1200'")
+    s=s.replace("if(/<div class=\"ritmo-boot-recovery\"/.test(body))throw new Error('Boot caiu na recuperação durante smoke test');","if(/ritmo-boot-(?:splash|recovery)/.test(body))throw new Error('Boot exibiu tela intermediária durante smoke test');")
+    smoke.write_text(s)
+
 # Sanidade: a release deve ter boot direto e não conter mais o splash antigo.
 final_app=app.read_text();final_idx=indexp.read_text();final_css=cssp.read_text()
 if 'ritmo-instant-login-boot' not in final_app: raise SystemExit('Login imediato não aplicado')
