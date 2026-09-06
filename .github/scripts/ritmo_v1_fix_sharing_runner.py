@@ -1,5 +1,9 @@
 from pathlib import Path
 
+# -----------------------------------------------------------------------------
+# Compartilhamento: tolerar funções async/sync e localizar o bloco de Meta
+# pela estrutura, não pela linha inteira.
+# -----------------------------------------------------------------------------
 p=Path('.github/scripts/ritmo_v1_sharing_patch.py')
 s=p.read_text()
 
@@ -22,7 +26,7 @@ new_func="""def areplace_func(name,next_name,new_code):
 if old_func in s:
     s=s.replace(old_func,new_func,1)
 elif new_func not in s:
-    raise SystemExit('Trecho do executor de funções não encontrado.')
+    raise SystemExit('Trecho do executor de funções do Compartilhamento não encontrado.')
 
 old_meta="arep(old,new,'tipo meta')"
 new_meta="""p=a.find(\"if(type==='goal'){\")
@@ -35,4 +39,45 @@ elif new_meta not in s:
     raise SystemExit('Trecho de meta compartilhada não encontrado.')
 
 p.write_text(s)
-print('Executor de compartilhamento robustecido para funções async/sync e formulário de metas.')
+
+# -----------------------------------------------------------------------------
+# Organização iOS: o Compartilhamento pode alterar a formatação entre funções.
+# Torna o helper capaz de localizar funções pelo nome, com ou sem async e com
+# espaçamento flexível, sem depender de uma assinatura textual rígida.
+# -----------------------------------------------------------------------------
+p_ios=Path('.github/scripts/ritmo_v1_ios_organization_patch.py')
+i=p_ios.read_text()
+old_ios="""def replace_between(start_marker,end_marker,new_text,label):
+    global a
+    p=a.find(start_marker)
+    q=a.find(end_marker,p+len(start_marker))
+    if p<0 or q<0:
+        raise SystemExit(f'Trecho não encontrado: {label}')
+    a=a[:p]+new_text+'\\n'+a[q:]
+"""
+new_ios="""def replace_between(start_marker,end_marker,new_text,label):
+    global a
+    import re
+    p=a.find(start_marker)
+    if p<0 and start_marker.startswith('function '):
+        name=start_marker[len('function '):].split('(',1)[0]
+        m=re.search(r'(?:async\\s+)?function\\s+'+re.escape(name)+r'\\s*\\(',a)
+        p=m.start() if m else -1
+    q=a.find(end_marker,p+1 if p>=0 else 0)
+    if q<0 and end_marker.startswith('function '):
+        name=end_marker[len('function '):].split('(',1)[0]
+        base=p+1 if p>=0 else 0
+        m=re.search(r'(?:async\\s+)?function\\s+'+re.escape(name)+r'\\s*\\(',a[base:])
+        q=base+m.start() if m else -1
+    if p<0 or q<0:
+        names=re.findall(r'(?:async\\s+)?function\\s+([A-Za-z0-9_]+)\\s*\\(',a)
+        raise SystemExit(f'Trecho não encontrado: {label}; funções: '+','.join(names[:100]))
+    a=a[:p]+new_text+'\\n'+a[q:]
+"""
+if old_ios in i:
+    i=i.replace(old_ios,new_ios,1)
+elif new_ios not in i:
+    raise SystemExit('Helper da organização iOS não encontrado.')
+p_ios.write_text(i)
+
+print('Executores do Compartilhamento e da organização iOS robustecidos.')
