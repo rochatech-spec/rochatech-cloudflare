@@ -10,6 +10,8 @@ on:
       - ".github/scripts/ritmo_v1_device_security_ux.py"
       - ".github/scripts/ritmo_v1_brand_menu_patch.py"
       - ".github/scripts/ritmo_v1_sharing_patch.py"
+      - ".github/scripts/ritmo_v1_fix_sharing_runner.py"
+      - ".github/scripts/ritmo_v1_ios_organization_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -58,8 +60,14 @@ jobs:
       - name: Aplicar identidade oficial e Menu
         run: python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
 
+      - name: Corrigir executor do Compartilhamento
+        run: python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+
       - name: Aplicar Compartilhamento a dois
         run: python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+
+      - name: Aplicar organização iOS e perfil
+        run: python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-v1
 
       - name: Validar sintaxe e regras Rocha Tech
         shell: bash
@@ -77,8 +85,6 @@ jobs:
           grep -Fq "data-shortcut-move" /tmp/ritmo-v1/public/app.js
           grep -Fq "function fabHtml" /tmp/ritmo-v1/public/app.js
           grep -Fq "if(!type)return ''" /tmp/ritmo-v1/public/app.js
-          grep -Fq "Ferramentas" /tmp/ritmo-v1/public/app.js
-          grep -Fq "Aplicativo" /tmp/ritmo-v1/public/app.js
           grep -Fq "data-system-update" /tmp/ritmo-v1/public/app.js
           grep -Fq "updateSystemNow" /tmp/ritmo-v1/public/app.js
           grep -Fq "menu-update-btn" /tmp/ritmo-v1/public/app.js
@@ -128,6 +134,21 @@ jobs:
           grep -Fq "sharing:['sharing','Compartilhar','users']" /tmp/ritmo-v1/public/app.js
           grep -Fq "'sharing'" /tmp/ritmo-v1/_worker.js
 
+          # Organização iOS, Personalização e foto de perfil real.
+          grep -Fq "Personalização" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Atalhos da barra inferior" /tmp/ritmo-v1/public/app.js
+          grep -Fq "data-page=\"shortcuts\"" /tmp/ritmo-v1/public/app.js
+          grep -Fq "ios-menu-profile" /tmp/ritmo-v1/public/app.js
+          grep -Fq "profile-ios-hero" /tmp/ritmo-v1/public/app.js
+          grep -Fq "data-profile-photo" /tmp/ritmo-v1/public/app.js
+          grep -Fq "avatarInput" /tmp/ritmo-v1/public/app.js
+          grep -Fq "optimizeAvatar" /tmp/ritmo-v1/public/app.js
+          grep -Fq "'/api/avatar'" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Conta sincronizada" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Nosso Ritmo ativo" /tmp/ritmo-v1/public/app.js
+          grep -Fq ".ios-list-card" /tmp/ritmo-v1/public/styles.css
+          grep -Fq ".profile-avatar-xl" /tmp/ritmo-v1/public/styles.css
+
           # Persistência importante continua fora do localStorage.
           ! grep -Fq "},8000)" /tmp/ritmo-v1/public/app.js
           ! grep -Fq "ritmo:seen:" /tmp/ritmo-v1/public/app.js
@@ -137,6 +158,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -f /tmp/ritmo-schema-test.db
           sqlite3 /tmp/ritmo-schema-test.db < /tmp/ritmo-v1/schema.sql
           sqlite3 /tmp/ritmo-schema-test.db ".tables" | grep -Fq "partnerships"
           sqlite3 /tmp/ritmo-schema-test.db ".tables" | grep -Fq "shared_goals"
@@ -169,6 +191,9 @@ jobs:
           grep -Fq "goal_scope" dist/app.js
           grep -Fq "/api/shared" dist/_worker.js
           grep -Fq "partnership_members" dist/_worker.js
+          grep -Fq "Personalização" dist/app.js
+          grep -Fq "profile-ios-hero" dist/app.js
+          grep -Fq "optimizeAvatar" dist/app.js
 
       - name: Empacotar Versão 1
         shell: bash
@@ -194,5 +219,5 @@ jobs:
             echo "Pacote já está atualizado."
             exit 0
           fi
-          git commit -m "Ritmo V1: compartilhamento a dois"
+          git commit -m "Ritmo V1: compartilhamento, organização iOS e perfil"
           git push origin HEAD:main
