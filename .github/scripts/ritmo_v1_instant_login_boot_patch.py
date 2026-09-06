@@ -10,14 +10,12 @@ a=app.read_text()
 idx=indexp.read_text()
 css=cssp.read_text()
 
-# A primeira tela precisa ser imediata. O login é renderizado antes de qualquer
-# bootstrap, restauração cloud ou atualização do service worker. Se já houver
-# sessão válida, o bootstrap em segundo plano troca naturalmente para lock/app.
-boot_marker="(async()=>{if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});"
-if boot_marker not in a:
-    raise SystemExit('Boot principal do Ritmo não encontrado')
+# A primeira tela precisa ser imediata. O bootstrap principal é assíncrono; por
+# isso renderizamos o login ao fim da avaliação do JS, ainda no mesmo turno, antes
+# que qualquer resposta de rede consiga concluir. Se existir sessão válida, o
+# bootstrap troca naturalmente para lock/app em seguida.
 if 'ritmo-instant-login-boot' not in a:
-    a=a.replace(boot_marker,"/* ritmo-instant-login-boot */\nrenderAuth();\n"+boot_marker,1)
+    a += "\n/* ritmo-instant-login-boot */\ntry{renderAuth()}catch{}\n"
 
 # Remove completamente o splash visual criado pela camada anterior. Mantemos
 # apenas um watchdog invisível: ele não interfere na UI; só recupera cache/SW se
@@ -60,8 +58,8 @@ app.write_text(a)
 indexp.write_text(idx)
 cssp.write_text(css)
 
-# O smoke de Chrome agora exige renderização rápida do login e rejeita qualquer
-# splash/recovery no primeiro quadro útil.
+# O smoke de Chrome exige renderização rápida do login e rejeita qualquer splash
+# ou recovery no primeiro quadro útil.
 smoke=root/'ci-browser-smoke.mjs'
 if smoke.exists():
     s=smoke.read_text()
