@@ -1,0 +1,74 @@
+name: Ritmo V1 finance logic inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-v1-finance-logic-inspect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar Ritmo atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-v1 && mkdir -p /tmp/ritmo-v1
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+          python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_avatar_cloud_fallback.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_welcome_install_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_system_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_mobile_safearea_fix.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_action_sheet_icon_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_install_handoff_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
+      - name: Expor trechos financeiros relevantes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          app=Path('/tmp/ritmo-v1/public/app.js').read_text()
+          worker=Path('/tmp/ritmo-v1/_worker.js').read_text()
+          schema=Path('/tmp/ritmo-v1/schema.sql').read_text()
+          def func(src,name,next_hint=None):
+              starts=[f'function {name}(',f'async function {name}(']
+              p=max(src.find(x) for x in starts)
+              if p<0:
+                  print(f'\n=== {name}: NAO ENCONTRADA ===');return
+              candidates=[]
+              for token in ['\nfunction ','\nasync function ']:
+                  q=src.find(token,p+1)
+                  if q>p:candidates.append(q)
+              q=min(candidates) if candidates else min(len(src),p+6000)
+              print(f'\n=== FUNC {name} ===\n'+src[p:q][:7000])
+          for n in ['currentStats','homePage','itemMoney','modalHtml','calendarPage','insightsPage','notifications']:
+              func(app,n)
+          print('\n=== SCHEMA INCOMES/EXPENSES/DEBTS ===')
+          for table in ['incomes','expenses','debts','debt_events']:
+              p=schema.find(f'CREATE TABLE IF NOT EXISTS {table}')
+              if p<0:p=schema.find(f'CREATE TABLE {table}')
+              if p>=0: print(schema[p:schema.find(';',p)+1])
+          print('\n=== WORKER INCOME ROUTES ===')
+          for needle in ["path==='/api/income'","path==='/api/shared/income'","/api/incomes","shared_incomes","INSERT INTO incomes","UPDATE incomes"]:
+              p=worker.find(needle)
+              if p>=0: print('\n---',needle,'---\n',worker[max(0,p-1200):p+4200])
+          PY
