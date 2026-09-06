@@ -63,6 +63,12 @@ if not wallets.exists():raise SystemExit('Patch de carteiras financeiras não en
 nsw={'__name__':'__main__','__file__':str(wallets)}
 exec(compile(wallets.read_text(),str(wallets),'exec'),nsw,nsw)
 
+# Relatório: filtro Pessoal/Casal, período e PDF A4 gerado no próprio aparelho.
+report=Path(__file__).with_name('ritmo_v1_report_pdf_patch.py')
+if not report.exists():raise SystemExit('Patch de Relatório PDF não encontrado')
+nsr={'__name__':'__main__','__file__':str(report)}
+exec(compile(report.read_text(),str(report),'exec'),nsr,nsr)
+
 # Fluidez global: troca Meu/Nosso pré-carregada e transições leves em todas as plataformas.
 smooth=Path(__file__).with_name('ritmo_v1_global_smoothness_patch.py')
 if not smooth.exists():raise SystemExit('Patch de fluidez global não encontrado')
