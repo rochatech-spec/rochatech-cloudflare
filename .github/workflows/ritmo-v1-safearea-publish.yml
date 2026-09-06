@@ -1,0 +1,138 @@
+name: Ritmo V1 safe area publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-v1-safearea-publish.yml"
+      - ".github/scripts/ritmo_v1_mobile_safearea_fix.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-v1-safearea
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Montar Ritmo Versão 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-v1 && mkdir -p /tmp/ritmo-v1
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+          python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_avatar_cloud_fallback.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_welcome_install_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_system_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_mobile_safearea_fix.py /tmp/ritmo-v1
+
+      - name: Validar e buildar
+        working-directory: /tmp/ritmo-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check public/app.js
+          node --check _worker.js
+          node --check public/sw.js
+          npm install --no-audit --no-fund
+          npm run build
+          node --check dist/app.js
+          node --check dist/_worker.js
+          grep -Fq 'Ritmo V1 — correção definitiva de safe-area' dist/styles.css
+          grep -Fq 'margin-top:calc(var(--ritmo-mobile-header)' dist/styles.css
+          grep -Fq 'padding-bottom:calc(var(--ritmo-mobile-bottom)' dist/styles.css
+          grep -Fq 'bottom:calc(8px + env(safe-area-inset-bottom))' dist/styles.css
+
+      - name: Iniciar autorização Cloudflare
+        id: auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "mode=token" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          (unset RUNNER_TRACKING_ID; nohup npx --yes wrangler@latest login --device --browser=false > "$LOG" 2>&1 & echo $! > "$PID")
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then cat "$LOG"; exit 0; fi
+            sleep 1
+          done
+          cat "$LOG"; exit 1
+
+      - name: Disponibilizar autorização
+        if: steps.auth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-v1-safearea-cloudflare-authorization
+          path: cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização
+        if: steps.auth.outputs.mode == 'device'
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="$(cat "$GITHUB_WORKSPACE/cloudflare-device-login.pid")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then exit 0; fi
+            if ! kill -0 "$P" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Identificar conta
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar interface
+        working-directory: /tmp/ritmo-v1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Validar produção
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://ritmo-br.pages.dev
+          CSS=000
+          for i in {1..36}; do
+            CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?safe=$GITHUB_SHA" || true)"
+            if [ "$CSS" = 200 ] && grep -Fq 'Ritmo V1 — correção definitiva de safe-area' /tmp/styles.css; then break; fi
+            sleep 5
+          done
+          test "$CSS" = 200
+          grep -Fq 'margin-top:calc(var(--ritmo-mobile-header)' /tmp/styles.css
+          grep -Fq 'padding-bottom:calc(var(--ritmo-mobile-bottom)' /tmp/styles.css
+          grep -Fq 'position:fixed!important' /tmp/styles.css
+          echo "Safe-area mobile do Ritmo V1 validada em produção."
