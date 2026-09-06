@@ -22,7 +22,6 @@ import { deviceSecurityEnabled } from './security/passkeys'
 import { changeScope, installLowConsumptionSync, invalidateFinancialCache, loadScope, prefetchOtherScope, refreshScope, submitMutation } from './sync/engine'
 import { Icon, type IconName } from './ui/Icon'
 
-const financialPages = new Set<PageKey>(['home','movements','debts','goals'])
 const menuPages = new Set<PageKey>(['menu','report','sharing','calendar','insights','settings','profile','notifications'])
 
 function applyTheme(theme: Settings['theme']='system') {
@@ -158,7 +157,7 @@ function App() {
     <aside className="desktop-sidebar"><button className="brand-button" type="button" onClick={()=>setPage('home')}><span>R</span><strong>Ritmo</strong></button><nav>{desktopNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav><button className="sidebar-profile" type="button" onClick={()=>setPage('profile')}><span>{data.profile.name.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.name}</strong><small>@{data.profile.username}</small></div></button></aside>
     <div className="app-column">
       <header className="mobile-topbar"><button className="mobile-brand" type="button" onClick={()=>setPage('home')}><span>R</span><strong>Ritmo</strong></button><button className="notification-button" type="button" onClick={()=>setPage('notifications')} aria-label="Avisos"><Icon name="bell"/>{noticeCount>0&&<i>{Math.min(99,noticeCount)}</i>}</button></header>
-      <main className="app-main">{financialPages.has(page)&&<ProfileSwitcher scope={scope} data={data} onChange={(value)=>void switchProfile(value)} busy={switching}/>}<div className="page-frame" key={`${page}-${scope}`}>{pageContent}</div></main>
+      <main className="app-main">{page==='home'&&<ProfileSwitcher scope={scope} data={data} onChange={(value)=>void switchProfile(value)} busy={switching}/>}<div className="page-frame" key={`${page}-${scope}`}>{pageContent}</div></main>
       <nav className="bottom-nav">{mobileNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav>
     </div>
     {action&&<FinancialSheet action={action} sharedAvailable={data.sharing.active} onClose={()=>setAction(null)} onSubmit={submitFinancial}/>} 
