@@ -1,4 +1,0 @@
-Ritmo V1 refinement deploy
-Atalhos editáveis e ordenáveis
-Menu Mais reorganizado
-FAB contextual por tela
