@@ -1,0 +1,227 @@
+name: Ritmo V1 publish Rocha Tech
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-v1-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-v1-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Montar Ritmo Versão 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-v1 && mkdir -p /tmp/ritmo-v1
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+          python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_avatar_cloud_fallback.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_welcome_install_patch.py /tmp/ritmo-v1
+
+      - name: Testar código e banco
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check /tmp/ritmo-v1/public/app.js
+          node --check /tmp/ritmo-v1/_worker.js
+          node --check /tmp/ritmo-v1/public/sw.js
+          rm -f /tmp/ritmo-schema.db
+          sqlite3 /tmp/ritmo-schema.db < /tmp/ritmo-v1/schema.sql
+          sqlite3 /tmp/ritmo-schema.db ".tables" | grep -Fq "partnerships"
+          sqlite3 /tmp/ritmo-schema.db ".tables" | grep -Fq "shared_goals"
+          test -s /tmp/ritmo-v1/public/ritmo-logo.png
+          test -s /tmp/ritmo-v1/public/ritmo-icon-192.png
+          test -s /tmp/ritmo-v1/public/ritmo-icon-512.png
+
+      - name: Build de produção
+        working-directory: /tmp/ritmo-v1
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+          for f in index.html app.js styles.css _worker.js sw.js _headers ritmo-logo.png ritmo-icon-192.png ritmo-icon-512.png; do test -s "dist/$f"; done
+          node --check dist/app.js
+          node --check dist/_worker.js
+          node --check dist/sw.js
+          grep -Fq 'Desenvolvedor: Flávio Rocha' dist/app.js
+          grep -Fq 'Nosso Ritmo' dist/app.js
+          grep -Fq 'Personalização' dist/app.js
+          grep -Fq 'profile-ios-hero' dist/app.js
+          grep -Fq 'ritmoWelcomeMount' dist/app.js
+          grep -Fq 'CLEAR_RITMO_CACHE' dist/sw.js
+
+      - name: Iniciar autorização Cloudflare
+        id: auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "mode=token" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          (unset RUNNER_TRACKING_ID; nohup npx --yes wrangler@latest login --device --browser=false > "$LOG" 2>&1 & echo $! > "$PID")
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then cat "$LOG"; exit 0; fi
+            sleep 1
+          done
+          cat "$LOG"; exit 1
+
+      - name: Disponibilizar autorização
+        if: steps.auth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-v1-cloudflare-authorization
+          path: cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização
+        if: steps.auth.outputs.mode == 'device'
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="$(cat "$GITHUB_WORKSPACE/cloudflare-device-login.pid")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then exit 0; fi
+            if ! kill -0 "$P" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Identificar conta
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Localizar KV
+        id: kv
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest kv namespace list > /tmp/kv.txt
+          KV_ID="$(node <<'NODE'
+          const fs=require('fs');const s=fs.readFileSync('/tmp/kv.txt','utf8');let id='';try{const d=JSON.parse(s),a=Array.isArray(d)?d:(d.result||[]),x=a.find(v=>(v.title||v.name)==='ritmo-br-cache');id=x?.id||''}catch{}if(!id){const l=s.split(/\r?\n/).find(x=>x.includes('ritmo-br-cache'))||'';id=(l.match(/[0-9a-f]{32}/i)||[])[0]||''}process.stdout.write(id)
+          NODE
+          )"
+          if [ -z "$KV_ID" ]; then OUT="$(npx --yes wrangler@latest kv namespace create ritmo-br-cache 2>&1)"; KV_ID="$(printf '%s\n' "$OUT" | grep -Eo '[0-9a-f]{32}' | head -1 || true)"; fi
+          test -n "$KV_ID"
+          echo "kv_id=$KV_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Localizar Turnstile
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest turnstile widget list --json > /tmp/ts-list.json
+          SITEKEY="$(node <<'NODE'
+          const fs=require('fs');const d=JSON.parse(fs.readFileSync('/tmp/ts-list.json','utf8'));const a=Array.isArray(d)?d:(d.result||d.widgets||[]);const x=a.find(w=>w?.name==='Ritmo BR');process.stdout.write(x?.sitekey||'')
+          NODE
+          )"
+          if [ -n "$SITEKEY" ]; then npx --yes wrangler@latest turnstile widget get "$SITEKEY" --json > /tmp/ts.json; else npx --yes wrangler@latest turnstile widget create "Ritmo BR" --domain ritmo-br.pages.dev --mode managed --json > /tmp/ts.json; fi
+          node <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/ts.json','utf8'));function f(o){if(!o||typeof o!=='object')return null;if(typeof o.sitekey==='string'&&typeof o.secret==='string')return o;for(const v of Object.values(o)){const r=f(v);if(r)return r}return null}const w=f(d);if(!w)process.exit(2);fs.writeFileSync('/tmp/ts.sitekey',w.sitekey);fs.writeFileSync('/tmp/ts.secret',w.secret)
+          NODE
+
+      - name: Configurar Cloudflare
+        working-directory: /tmp/ritmo-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITEKEY="$(cat /tmp/ts.sitekey)"
+          cat > wrangler.toml <<EOF
+          name = "ritmo-br"
+          compatibility_date = "2026-09-05"
+          pages_build_output_dir = "./dist"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "ritmo-db"
+          database_id = "17baeadd-2140-4cf6-ad5b-0aa0390d1d16"
+          [[kv_namespaces]]
+          binding = "CACHE"
+          id = "${{ steps.kv.outputs.kv_id }}"
+          [vars]
+          APP_NAME = "Ritmo"
+          APP_URL = "https://ritmo-br.pages.dev"
+          TURNSTILE_SITEKEY = "$SITEKEY"
+          CBOR_NATIVE_ACCELERATION_DISABLED = "true"
+          EOF
+
+      - name: Atualizar segredo Turnstile
+        working-directory: /tmp/ritmo-v1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SECRET="$(cat /tmp/ts.secret)"; echo "::add-mask::$SECRET"; printf '%s' "$SECRET" | npx --yes wrangler@latest pages secret put TURNSTILE_SECRET --project-name ritmo-br
+
+      - name: Aplicar schema D1
+        working-directory: /tmp/ritmo-v1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest d1 execute ritmo-db --remote --file ./schema.sql
+
+      - name: Publicar
+        working-directory: /tmp/ritmo-v1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Validar endereço público
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://ritmo-br.pages.dev
+          HC=000; JS=000; CSS=000; SW=000
+          for i in {1..36}; do
+            HC="$(curl -sS -o /tmp/h.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?x=$GITHUB_SHA" || true)"
+            JS="$(curl -sS -o /tmp/a.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?x=$GITHUB_SHA" || true)"
+            CSS="$(curl -sS -o /tmp/s.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?x=$GITHUB_SHA" || true)"
+            SW="$(curl -sS -o /tmp/sw.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/sw.js?x=$GITHUB_SHA" || true)"
+            if [ "$HC" = 200 ] && [ "$JS" = 200 ] && [ "$CSS" = 200 ] && [ "$SW" = 200 ] && grep -Fq 'Desenvolvedor: Flávio Rocha' /tmp/a.js && grep -Fq 'Nosso Ritmo' /tmp/a.js && grep -Fq 'Personalização' /tmp/a.js && grep -Fq 'profile-ios-hero' /tmp/a.js && grep -Fq '.ritmo-welcome' /tmp/s.css && grep -Fq 'CLEAR_RITMO_CACHE' /tmp/sw.js; then break; fi
+            sleep 5
+          done
+          test "$HC" = 200; test "$JS" = 200; test "$CSS" = 200; test "$SW" = 200
+          grep -q '"ok":true' /tmp/h.json
+          grep -q '"db":true' /tmp/h.json
+          grep -Fq 'Desenvolvedor: Flávio Rocha' /tmp/a.js
+          grep -Fq 'Instale no Android' /tmp/a.js
+          grep -Fq 'Instale no iPhone ou iPad' /tmp/a.js
+          grep -Fq 'Nosso Ritmo' /tmp/a.js
+          echo "Ritmo Versão 1 publicado e validado: $BASE"
