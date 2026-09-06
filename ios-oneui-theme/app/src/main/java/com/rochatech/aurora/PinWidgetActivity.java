@@ -10,7 +10,7 @@ import android.content.pm.LauncherApps;
 import android.os.Bundle;
 
 public class PinWidgetActivity extends Activity {
-    private static final int HOST_ID = 27026;
+    private static final int HOST_ID = 27027;
     private static final String PREFS = "aurora_home";
     private static final String KEY_WIDGET = "widget_id";
     private LauncherApps.PinItemRequest request;
@@ -47,8 +47,8 @@ public class PinWidgetActivity extends Activity {
                     try { host.deleteAppWidgetId(old); } catch (Exception ignored) {}
                 }
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_WIDGET, id).apply();
-                Intent home = new Intent(this, PremiumLauncherActivity.class);
-                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                Intent home = new Intent(this, AuroraLauncherActivity.class);
+                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 startActivity(home);
             } else {
                 try { host.deleteAppWidgetId(id); } catch (Exception ignored) {}
