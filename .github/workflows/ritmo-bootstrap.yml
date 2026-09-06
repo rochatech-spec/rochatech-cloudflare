@@ -1,0 +1,119 @@
+name: Ritmo production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Restaurar projeto Ritmo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ritmo
+          echo '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' | base64 -d > /tmp/ritmo.tgz
+          tar -xzf /tmp/ritmo.tgz -C ritmo
+      - name: Instalar ferramentas
+        working-directory: ritmo
+        run: npm install --no-audit --no-fund
+      - name: Descobrir conta Cloudflare
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e \"const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)\")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+      - name: Garantir projeto Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest pages project list --json > /tmp/pages.json
+          if ! node -e "const d=require('/tmp/pages.json');const a=Array.isArray(d)?d:(d.result||[]);process.exit(a.some(x=>x.name==='ritmo')?0:1)"; then
+            npx --yes wrangler@latest pages project create ritmo --production-branch main
+          fi
+      - name: Garantir D1 e R2
+        id: resources
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest d1 list --json > /tmp/d1.json
+          if ! node -e "const d=require('/tmp/d1.json');const a=Array.isArray(d)?d:(d.result||[]);process.exit(a.some(x=>x.name==='ritmo-db')?0:1)"; then
+            npx --yes wrangler@latest d1 create ritmo-db --location enam
+            npx --yes wrangler@latest d1 list --json > /tmp/d1.json
+          fi
+          DB_ID="$(node -e \"const d=require('/tmp/d1.json');const a=(Array.isArray(d)?d:(d.result||[])).find(x=>x.name==='ritmo-db');if(!a)process.exit(2);process.stdout.write(a.uuid||a.id)\")"
+          if ! npx --yes wrangler@latest r2 bucket list 2>/tmp/r2err.txt | grep -q 'ritmo-private'; then
+            npx --yes wrangler@latest r2 bucket create ritmo-private --location enam
+          fi
+          echo "db_id=$DB_ID" >> "$GITHUB_OUTPUT"
+      - name: Aplicar schema
+        working-directory: ritmo
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest d1 execute ritmo-db --remote --file schema.sql
+      - name: Conectar D1 e R2 ao Ritmo
+        env:
+          ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+          DB_ID: ${{ steps.resources.outputs.db_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >/tmp/patch.json
+          const cfg={compatibility_date:'2026-09-05',d1_databases:{DB:{id:process.env.DB_ID}},r2_buckets:{AVATARS:{name:'ritmo-private'}}};
+          process.stdout.write(JSON.stringify({deployment_configs:{production:cfg,preview:cfg}}));
+          NODE
+          curl -fsS -X PATCH "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/pages/projects/ritmo" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/patch.json > /tmp/patch-response.json
+          node -e "const d=require('/tmp/patch-response.json');if(d.success!==true){console.error(d.errors||d);process.exit(2)}"
+      - name: Build
+        working-directory: ritmo
+        run: npm run build
+      - name: Publicar
+        working-directory: ritmo
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+      - name: Validar link público
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://ritmo.pages.dev"
+          for i in {1..36}; do
+            HC="$(curl -sS -o /tmp/health.json -w '%{http_code}' "$BASE/api/health?build=$GITHUB_SHA" || true)"
+            PC="$(curl -sS -o /tmp/index.html -w '%{http_code}' "$BASE/?build=$GITHUB_SHA" || true)"
+            if [ "$HC" = "200" ] && [ "$PC" = "200" ] && grep -q '"ok":true' /tmp/health.json && grep -q '<title>Ritmo</title>' /tmp/index.html; then
+              echo "Ritmo publicado: $BASE"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Falha ao validar $BASE"
+          cat /tmp/health.json || true
+          exit 1
