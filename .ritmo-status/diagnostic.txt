@@ -1,0 +1,12 @@
+commit=8da4bdb6d77b8df90b68c0caff7dbd66d30b82c6
+exit_code=1
+status=FAILURE
+--- tail ---
+Backend Ritmo v6 atualizado: atalhos e notificações vistas persistidos no D1.
+Ritmo v6 UI aplicada.
+Ritmo UX corrigida: atalhos editáveis/ordenáveis, Mais organizado e FAB contextual.
+Atualização do sistema adicionada: limpa cache, renova service worker e força shell mais recente.
+Ritmo V1: linguagem de biometria/chave de acesso alinhada ao provedor nativo do aparelho.
+Ritmo V1: marca oficial aplicada, Mais renomeado para Menu e Atualizar Sistema movido para o topo em dourado.
+Executor de compartilhamento corrigido para funções async e sync.
+APP trecho não encontrado: tipo meta
