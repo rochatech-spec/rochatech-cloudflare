@@ -7,6 +7,7 @@ on:
       - ".github/workflows/ritmo-v6-package.yml"
       - ".github/scripts/ritmo_v7_ux_patch.py"
       - ".github/scripts/ritmo_v1_update_patch.py"
+      - ".github/scripts/ritmo_v1_device_security_ux.py"
   workflow_dispatch:
 
 permissions:
@@ -49,6 +50,9 @@ jobs:
       - name: Aplicar atualização limpa do sistema
         run: python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
 
+      - name: Aplicar segurança por dispositivo
+        run: python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
+
       - name: Validar sintaxe e regras Rocha Tech
         shell: bash
         run: |
@@ -79,6 +83,12 @@ jobs:
           grep -Fq "seen_notifications" /tmp/ritmo-v1/_worker.js
           grep -Fq "user_mobile_settings" /tmp/ritmo-v1/schema.sql
           grep -Fq "120000" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Biometria e chave de acesso" /tmp/ritmo-v1/public/app.js
+          grep -Fq "deviceSecurityHint" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Samsung Pass" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Face ID/Touch ID" /tmp/ritmo-v1/public/app.js
+          grep -Fq "authenticatorAttachment:'platform'" /tmp/ritmo-v1/_worker.js
+          grep -Fq "userVerification:'required'" /tmp/ritmo-v1/_worker.js
           ! grep -Fq "},8000)" /tmp/ritmo-v1/public/app.js
           ! grep -Fq "ritmo:seen:" /tmp/ritmo-v1/public/app.js
           ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v1/public/app.js
@@ -98,6 +108,8 @@ jobs:
           grep -Fq "data-shortcut-move" dist/app.js
           grep -Fq "function fabHtml" dist/app.js
           grep -Fq "data-system-update" dist/app.js
+          grep -Fq "Biometria e chave de acesso" dist/app.js
+          grep -Fq "Samsung Pass" dist/app.js
           grep -Fq "ritmo-shell-v1-current" dist/sw.js
 
       - name: Empacotar Versão 1
@@ -124,5 +136,5 @@ jobs:
             echo "Pacote já está atualizado."
             exit 0
           fi
-          git commit -m "Ritmo V1: atualização limpa de cache e service worker"
+          git commit -m "Ritmo V1: segurança nativa por dispositivo"
           git push origin HEAD:main
