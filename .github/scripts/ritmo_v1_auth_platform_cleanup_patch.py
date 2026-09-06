@@ -57,6 +57,12 @@ if not launch.exists():raise SystemExit('Patch de lançamento nativo não encont
 ns={'__name__':'__main__','__file__':str(launch)}
 exec(compile(launch.read_text(),str(launch),'exec'),ns,ns)
 
+# Carteiras financeiras: pessoal de cada membro + carteira do casal, com transferência própria.
+wallets=Path(__file__).with_name('ritmo_v1_wallets_ledger_patch.py')
+if not wallets.exists():raise SystemExit('Patch de carteiras financeiras não encontrado')
+nsw={'__name__':'__main__','__file__':str(wallets)}
+exec(compile(wallets.read_text(),str(wallets),'exec'),nsw,nsw)
+
 # Fluidez global: troca Meu/Nosso pré-carregada e transições leves em todas as plataformas.
 smooth=Path(__file__).with_name('ritmo_v1_global_smoothness_patch.py')
 if not smooth.exists():raise SystemExit('Patch de fluidez global não encontrado')
