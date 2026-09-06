@@ -48,6 +48,10 @@ jobs:
           need 'Login' src/api/client.ts '/api/auth/login'
           need 'Desbloqueio do aparelho' src/security/passkeys.ts '/api/webauthn'
           need 'Perfis Pessoal/Casal' src/App.tsx 'ProfileSwitcher'
+          need 'Troca de perfil somente na Home' src/App.tsx "page==='home'&&<ProfileSwitcher"
+          PROFILE_SWITCHERS=$(grep -Rho '<ProfileSwitcher' src --include='*.tsx' | wc -l | tr -d ' ')
+          test "$PROFILE_SWITCHERS" = "1" || { echo "✗ seletor Pessoal/Casal duplicado fora da Home" >&2; exit 1; }
+          if grep -Fq 'financialPages.has(page)&&<ProfileSwitcher' src/App.tsx; then echo '✗ seletor de perfil reapareceu em páginas internas' >&2; exit 1; fi
           if MATCHES="$(grep -Rin -i 'extrato' src || true)" && [ -n "$MATCHES" ]; then printf '%s\n' "$MATCHES"; echo '✗ nomenclatura antiga encontrada' >&2; exit 1; fi
           echo '✓ nomenclatura somente Relatório'
       - name: PWA e offline-first
