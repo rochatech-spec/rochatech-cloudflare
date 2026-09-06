@@ -14,6 +14,8 @@ on:
       - ".github/scripts/ritmo_v1_debt_av_sync_patch.py"
       - ".github/scripts/ritmo_v1_goal_strategy_patch.py"
       - ".github/scripts/ritmo_v1_native_biometric_flow_patch.py"
+      - ".github/scripts/ritmo_v1_native_performance_patch.py"
+      - ".github/scripts/ritmo_v1_auth_platform_cleanup_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -71,6 +73,7 @@ jobs:
           python3 .github/scripts/ritmo_v1_debt_av_sync_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_goal_strategy_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_biometric_flow_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_auth_platform_cleanup_patch.py /tmp/ritmo-v1
 
       - name: Bateria completa do Ritmo
         working-directory: /tmp/ritmo-v1
@@ -139,22 +142,31 @@ jobs:
           grep -Fq 'Manter conta salva neste aparelho' public/app.js
           grep -Fq 'class="secure-lock premium-lock"' public/app.js
 
-          echo '7/12 Biometria natural do aparelho'
+          echo '7/12 Biometria e passkeys multiplataforma'
           grep -Fq 'Desbloqueio do aparelho' public/app.js
-          grep -Fq "residentKey:'discouraged'" _worker.js
-          grep -Fq "transports:['internal']" _worker.js
-          grep -Fq "hints=['client-device']" public/app.js
-          grep -Fq 'unlockBio(true)' public/app.js
+          grep -Fq "residentKey:'preferred'" _worker.js
+          grep -Fq "transports:JSON.parse(x.transports||'[]')" _worker.js
+          grep -Fq 'function ritmoDeviceBioEnabled' public/app.js
+          grep -Fq 'function ritmoAuthenticateDevice' public/app.js
+          grep -Fq 'navigator.credentials.get({publicKey:pk})' public/app.js
           grep -Fq 'Face ID / Touch ID' public/app.js
           grep -Fq 'Windows Hello' public/app.js
+          ! grep -Fq "transports:['internal']" public/app.js
+          ! grep -Fq "transports:['internal']" _worker.js
+          ! grep -Fq "hints=['client-device']" public/app.js
+          ! grep -Fq 'unlockBio(true)' public/app.js
+          ! grep -Fq "residentKey:'discouraged'" _worker.js
+          ! grep -Fq 'ritmoPrepareBioChallenge' public/app.js
 
-          echo '8/12 Credenciais locais'
+          echo '8/12 Login leve e credenciais locais'
           python3 - <<'PY'
           from pathlib import Path
           s=Path('public/app.js').read_text().lower()
           bad=['localstorage.setitem(\'password','localstorage.setitem("password','localstorage.setitem(`password','ritmo:saved-password']
           if any(x in s for x in bad): raise SystemExit('Senha persistida localmente')
           assert 'ritmo:saved-account' in s
+          for p in ['public/app.js','public/index.html','_worker.js']:
+              if 'turnstile' in Path(p).read_text().lower(): raise SystemExit('Turnstile ainda presente em '+p)
           PY
 
           echo '9/12 PWA e experiência nativa'
@@ -182,7 +194,11 @@ jobs:
           grep -Fq 'function goalStrategy' dist/app.js
           grep -Fq 'data-debt-av' dist/app.js
           grep -Fq 'financeScopeField' dist/app.js
-          grep -Fq 'unlockBio(true)' dist/app.js
+          grep -Fq 'ritmoAuthenticateDevice' dist/app.js
+          grep -Fq "residentKey:'preferred'" dist/_worker.js
+          ! grep -Fqi 'turnstile' dist/app.js
+          ! grep -Fqi 'turnstile' dist/index.html
+          ! grep -Fqi 'turnstile' dist/_worker.js
 
           echo '12/12 Artefatos essenciais'
           test -s dist/index.html
@@ -239,6 +255,26 @@ jobs:
           ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
           echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Limpar Turnstile obsoleto do projeto
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          LIST="$(npx --yes wrangler@latest pages secret list --project-name ritmo-br 2>&1 || true)"
+          printf '%s\n' "$LIST"
+          for KEY in TURNSTILE_SECRET TURNSTILE_SITEKEY; do
+            if printf '%s\n' "$LIST" | grep -q "$KEY"; then
+              printf 'y\n' | npx --yes wrangler@latest pages secret delete "$KEY" --project-name ritmo-br
+            fi
+          done
+          AFTER="$(npx --yes wrangler@latest pages secret list --project-name ritmo-br 2>&1 || true)"
+          if printf '%s\n' "$AFTER" | grep -Eq 'TURNSTILE_SECRET|TURNSTILE_SITEKEY'; then
+            echo 'Segredo Turnstile ainda presente no projeto.' >&2
+            exit 1
+          fi
+          echo 'Turnstile removido do projeto; D1/KV/R2 preservados.'
+
       - name: Publicar
         working-directory: /tmp/ritmo-v1
         env:
@@ -254,15 +290,20 @@ jobs:
             JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?smart=$GITHUB_SHA" || true)"
             WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?smart=$GITHUB_SHA" || true)"
             CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?smart=$GITHUB_SHA" || true)"
-            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && grep -Fq 'goalStrategy' /tmp/app.js && grep -Fq 'data-debt-av' /tmp/app.js && grep -Fq 'financeScopeField' /tmp/app.js && grep -Fq 'Desbloqueio do aparelho' /tmp/app.js; then break; fi
+            IDX="$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?smart=$GITHUB_SHA" || true)"
+            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && [ "$IDX" = 200 ] && grep -Fq 'goalStrategy' /tmp/app.js && grep -Fq 'data-debt-av' /tmp/app.js && grep -Fq 'financeScopeField' /tmp/app.js && grep -Fq 'ritmoAuthenticateDevice' /tmp/app.js; then break; fi
             sleep 5
           done
-          test "$JS" = 200; test "$WK" = 200; test "$CSS" = 200
+          test "$JS" = 200; test "$WK" = 200; test "$CSS" = 200; test "$IDX" = 200
           grep -q '"ok":true' /tmp/health.json
           grep -Fq 'A receber' /tmp/app.js
           grep -Fq 'Estratégia do Ritmo' /tmp/app.js
           grep -Fq 'Individualidade preservada' /tmp/app.js
           grep -Fq 'Registrar AV' /tmp/app.js
-          grep -Fq 'unlockBio(true)' /tmp/app.js
+          grep -Fq 'ritmoAuthenticateDevice' /tmp/app.js
+          grep -Fq 'ritmoDeviceBioEnabled' /tmp/app.js
+          ! grep -Fqi 'turnstile' /tmp/app.js
+          ! grep -Fqi 'turnstile' /tmp/index.html
+          ! grep -Fqi 'turnstile' /tmp/health.json
           grep -Fq 'couple-space-grid' /tmp/styles.css
           echo 'Ritmo V1 validado em produção.'
