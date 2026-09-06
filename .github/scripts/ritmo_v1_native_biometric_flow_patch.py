@@ -36,3 +36,11 @@ repw("authenticatorSelection:{authenticatorAttachment:'platform',residentKey:'pr
 repw("allowCredentials:(creds.results||[]).map(x=>({id:x.credential_id,transports:JSON.parse(x.transports||'[]')})),userVerification:'required'","allowCredentials:(creds.results||[]).map(x=>({id:x.credential_id,transports:['internal']})),userVerification:'required'",'authentication internal')
 app.write_text(a);worker.write_text(w)
 print('Biometria natural aplicada: autenticador interno, prompt automático e fallback por senha.')
+
+# Mantém a otimização de desempenho como módulo separado, mas sempre aplicada junto
+# do último patch nativo para não depender de uma etapa extra no pipeline.
+perf=Path(__file__).with_name('ritmo_v1_native_performance_patch.py')
+if not perf.exists():
+ raise SystemExit('Patch de desempenho nativo não encontrado')
+ns={'__name__':'__main__','__file__':str(perf)}
+exec(compile(perf.read_text(),str(perf),'exec'),ns,ns)
