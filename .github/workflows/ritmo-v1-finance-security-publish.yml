@@ -16,6 +16,13 @@ on:
       - ".github/scripts/ritmo_v1_native_biometric_flow_patch.py"
       - ".github/scripts/ritmo_v1_native_performance_patch.py"
       - ".github/scripts/ritmo_v1_auth_platform_cleanup_patch.py"
+      - ".github/scripts/ritmo_v1_wallets_ledger_patch.py"
+      - ".github/scripts/ritmo_v1_report_pdf_patch.py"
+      - ".github/scripts/ritmo_v1_wallet_report_audit_patch.py"
+      - ".github/scripts/ritmo_v1_global_smoothness_patch.py"
+      - ".github/scripts/ritmo_v1_commercial_dom_audit_patch.py"
+      - ".github/scripts/ritmo_v1_native_launch_theme_patch.py"
+      - ".github/scripts/ritmo_v1_commercial_readiness_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -86,40 +93,57 @@ jobs:
           node --check public/sw.js
           rm -f /tmp/ritmo-test.db
           sqlite3 /tmp/ritmo-test.db < schema.sql
+          sqlite3 /tmp/ritmo-test.db ".schema wallet_transactions" | grep -Fq 'transaction_type'
+          sqlite3 /tmp/ritmo-test.db ".schema wallet_transactions" | grep -Fq 'source_wallet'
+          sqlite3 /tmp/ritmo-test.db ".schema wallet_transactions" | grep -Fq 'destination_wallet'
 
-          echo '2/12 Realizado x previsto'
+          echo '2/12 Realizado, previsto e carteiras'
           grep -Fq 'function incomeIsRealized' public/app.js
-          grep -Fq 'balance=income-paid' public/app.js
+          grep -Fq "transferNet=d.scope==='shared'?" public/app.js
+          grep -Fq 'balance=income-paid+transferNet' public/app.js
           grep -Fq 'forecast=balance+receivable-pending' public/app.js
           grep -Fq 'A receber' public/app.js
           grep -Fq 'A pagar' public/app.js
           node - <<'NODE'
-          const today='2026-09-06';
-          const incomes=[{amount:1200,date:'2026-09-05'},{amount:5000,date:'2026-10-05'}];
-          const expenses=[{amount:200,date:'2026-09-04',status:'pago'},{amount:400,date:'2026-09-20',status:'pendente'}];
-          const income=incomes.filter(x=>x.date<=today).reduce((s,x)=>s+x.amount,0);
-          const paid=expenses.filter(x=>x.status==='pago'&&x.date<=today).reduce((s,x)=>s+x.amount,0);
-          const receivable=incomes.filter(x=>x.date>today).reduce((s,x)=>s+x.amount,0);
-          const pending=expenses.filter(x=>!(x.status==='pago'&&x.date<=today)).reduce((s,x)=>s+x.amount,0);
-          if(income-paid!==1000||income-paid+receivable-pending!==5600)throw new Error('Regra financeira falhou');
+          const salario=4000,transferencia=2500;
+          const pessoal=salario-transferencia,casal=transferencia,receitaReal=salario;
+          if(pessoal!==1500||casal!==2500||receitaReal!==4000)throw new Error('Carteiras ou receita real duplicadas');
+          const vendaCasal=800,despesaCasal=120;
+          if(casal+vendaCasal-despesaCasal!==3180)throw new Error('Saldo compartilhado incorreto');
           NODE
 
-          echo '3/12 Espaços pessoal e casal'
+          echo '3/12 Pessoal, casal, transferências e Relatório'
           grep -Fq 'function financeScopeField' public/app.js
-          grep -Fq 'Este lançamento pertence a' public/app.js
-          grep -Fq 'Individualidade preservada' public/app.js
-          grep -Fq 'Do casal' public/app.js
-          grep -Fq 'data-smart-new="expense"' public/app.js
-          grep -Fq 'forcedScope' public/app.js
-          grep -Fq 'Somente você verá este item.' public/app.js
+          grep -Fq 'Destino da entrada' public/app.js
+          grep -Fq 'Pagar com' public/app.js
+          grep -Fq 'Casal / Compartilhado' public/app.js
+          grep -Fq 'Transferir para o casal' public/app.js
+          grep -Fq '/api/wallet/transfers' _worker.js
+          grep -Fq "transaction_type='transfer'" _worker.js
+          grep -Fq 'function walletPersonalBalanceCents' _worker.js
+          grep -Fq 'function walletSharedBalanceCents' _worker.js
+          grep -Fq 'function ritmoBuildReportPdf' public/app.js
+          grep -Fq 'data-report-scope' public/app.js
+          grep -Fq 'Gerar PDF' public/app.js
+          grep -Fq "walletReport(env,userId,scope" _worker.js
+          grep -Fq 'date>=? AND date<=?' _worker.js
+          python3 - <<'PY'
+          from pathlib import Path
+          w=Path('_worker.js').read_text()
+          p=w.index("if(path==='/api/wallet/transfers'")
+          q=w.index('const transferMatch=',p)
+          block=w[p:q].lower()
+          forbidden=['insert into incomes','insert into expenses','insert into shared_incomes','insert into shared_expenses']
+          if any(x in block for x in forbidden): raise SystemExit('Transferência cria receita/despesa artificial')
+          a=Path('public/app.js').read_text().lower()
+          if 'extrato' in a: raise SystemExit('Nomenclatura Extrato indevida')
+          PY
 
-          echo '4/12 Dívida e AV sincronizados'
-          grep -Fq 'data-debt-av' public/app.js
-          grep -Fq 'Registrar AV' public/app.js
-          grep -Fq 'AV da dívida' _worker.js
-          grep -Fq '(payment|credit|av)' _worker.js
-          grep -Fq 'sincronizado com dívida' public/app.js
-          grep -Fq 'Gerenciar na dívida' public/app.js
+          echo '4/12 Dívidas e Haver sincronizados'
+          grep -Fq 'data-debt-credit' public/app.js
+          grep -Fq 'Haver' public/app.js
+          grep -Fq 'Haver da dívida' _worker.js
+          grep -Fq 'function debtEventLabel' public/app.js
           grep -Fq 'DELETE FROM expenses WHERE debt_event_id' _worker.js
           grep -Fq 'DELETE FROM shared_expenses WHERE debt_event_id' _worker.js
 
@@ -158,13 +182,14 @@ jobs:
           ! grep -Fq "residentKey:'discouraged'" _worker.js
           ! grep -Fq 'ritmoPrepareBioChallenge' public/app.js
 
-          echo '8/12 Login leve e credenciais locais'
+          echo '8/12 Login leve e privacidade'
           python3 - <<'PY'
           from pathlib import Path
           s=Path('public/app.js').read_text().lower()
           bad=['localstorage.setitem(\'password','localstorage.setitem("password','localstorage.setitem(`password','ritmo:saved-password']
           if any(x in s for x in bad): raise SystemExit('Senha persistida localmente')
           assert 'ritmo:saved-account' in s
+          assert 'carteira e visibilidade são coisas diferentes' in s
           for p in ['public/app.js','public/index.html','_worker.js']:
               if 'turnstile' in Path(p).read_text().lower(): raise SystemExit('Turnstile ainda presente em '+p)
           PY
@@ -176,29 +201,36 @@ jobs:
           grep -Fq 'ritmoNativeCloudRestore' public/app.js
           grep -Fq 'ritmo-sheet-open' public/styles.css
           grep -Fq 'prefers-reduced-motion:reduce' public/styles.css
+          grep -Fq 'ritmoTransitionRender' public/app.js
+          grep -Fq 'ritmoScheduleScopePrefetch' public/app.js
 
-          echo '10/12 Regressões de interface'
+          echo '10/12 Interface compacta e regressões'
           grep -Fq 'data-shortcut-drag' public/app.js
           grep -Fq 'ritmoStatusBarSync' public/app.js
           grep -Fq 'premium-lock-inner' public/styles.css
-          grep -Fq 'couple-space-grid' public/styles.css
-          grep -Fq 'goal-strategy' public/styles.css
-          grep -Fq 'debt-actions-three' public/styles.css
+          grep -Fq 'sharing-space-row' public/styles.css
+          grep -Fq 'compact-money-row' public/styles.css
+          grep -Fq 'compact-debt-row' public/styles.css
+          grep -Fq 'compact-goal-row' public/styles.css
+          grep -Fq 'report-filter-panel' public/styles.css
 
-          echo '11/12 Build de produção'
+          echo '11/12 Build e auditoria comercial'
           npm install --no-audit --no-fund
           npm run build
           node --check dist/app.js
           node --check dist/_worker.js
           node --check dist/sw.js
           grep -Fq 'function goalStrategy' dist/app.js
-          grep -Fq 'data-debt-av' dist/app.js
           grep -Fq 'financeScopeField' dist/app.js
           grep -Fq 'ritmoAuthenticateDevice' dist/app.js
+          grep -Fq 'ritmoBuildReportPdf' dist/app.js
+          grep -Fq 'Transferir para o casal' dist/app.js
+          grep -Fq 'wallet_transactions' dist/_worker.js
           grep -Fq "residentKey:'preferred'" dist/_worker.js
           ! grep -Fqi 'turnstile' dist/app.js
           ! grep -Fqi 'turnstile' dist/index.html
           ! grep -Fqi 'turnstile' dist/_worker.js
+          ! grep -Fqi 'extrato' dist/app.js
 
           echo '12/12 Artefatos essenciais'
           test -s dist/index.html
@@ -206,6 +238,7 @@ jobs:
           test -s dist/styles.css
           test -s dist/manifest.webmanifest
           test -s dist/sw.js
+          test -s dist/version.json
           echo 'Bateria completa aprovada.'
 
       - name: Iniciar autorização Cloudflare
@@ -291,19 +324,24 @@ jobs:
             WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?smart=$GITHUB_SHA" || true)"
             CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?smart=$GITHUB_SHA" || true)"
             IDX="$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?smart=$GITHUB_SHA" || true)"
-            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && [ "$IDX" = 200 ] && grep -Fq 'goalStrategy' /tmp/app.js && grep -Fq 'data-debt-av' /tmp/app.js && grep -Fq 'financeScopeField' /tmp/app.js && grep -Fq 'ritmoAuthenticateDevice' /tmp/app.js; then break; fi
+            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && [ "$IDX" = 200 ] && grep -Fq 'ritmoBuildReportPdf' /tmp/app.js && grep -Fq 'Transferir para o casal' /tmp/app.js && grep -Fq 'financeScopeField' /tmp/app.js && grep -Fq 'ritmoAuthenticateDevice' /tmp/app.js; then break; fi
             sleep 5
           done
           test "$JS" = 200; test "$WK" = 200; test "$CSS" = 200; test "$IDX" = 200
           grep -q '"ok":true' /tmp/health.json
           grep -Fq 'A receber' /tmp/app.js
           grep -Fq 'Estratégia do Ritmo' /tmp/app.js
-          grep -Fq 'Individualidade preservada' /tmp/app.js
-          grep -Fq 'Registrar AV' /tmp/app.js
+          grep -Fq 'Carteira e visibilidade são coisas diferentes' /tmp/app.js
+          grep -Fq 'Haver' /tmp/app.js
+          grep -Fq 'Relatório' /tmp/app.js
+          grep -Fq 'Gerar PDF' /tmp/app.js
           grep -Fq 'ritmoAuthenticateDevice' /tmp/app.js
           grep -Fq 'ritmoDeviceBioEnabled' /tmp/app.js
           ! grep -Fqi 'turnstile' /tmp/app.js
           ! grep -Fqi 'turnstile' /tmp/index.html
           ! grep -Fqi 'turnstile' /tmp/health.json
-          grep -Fq 'couple-space-grid' /tmp/styles.css
+          ! grep -Fqi 'extrato' /tmp/app.js
+          grep -Fq 'sharing-space-row' /tmp/styles.css
+          grep -Fq 'compact-money-row' /tmp/styles.css
+          grep -Fq 'report-filter-panel' /tmp/styles.css
           echo 'Ritmo V1 validado em produção.'
