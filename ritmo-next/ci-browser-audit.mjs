@@ -58,7 +58,7 @@ const server=http.createServer((req,res)=>{
    if(url.pathname==='/api/wallet/report'){const scope=url.searchParams.get('scope')==='shared'?'shared':'personal',from=url.searchParams.get('from')||'2026-09-01',to=url.searchParams.get('to')||'2026-09-06';res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(report(scope,from,to)));return}
    res.writeHead(200,{'content-type':'application/json'});res.end('{"ok":true}');return
   }
-  let rel=url.pathname==='/'?'index.html':url.pathname.replace(/^\\/+/,''),file=path.join(dist,rel)
+  let rel=url.pathname==='/'?'index.html':url.pathname.replace(/^\/+/,''),file=path.join(dist,rel)
   if(!file.startsWith(dist)||!fs.existsSync(file)||fs.statSync(file).isDirectory())file=path.join(dist,'index.html')
   let body=fs.readFileSync(file)
   if(path.basename(file)==='index.html')body=Buffer.from(body.toString().replace('</body>',harness+'</body>'))
