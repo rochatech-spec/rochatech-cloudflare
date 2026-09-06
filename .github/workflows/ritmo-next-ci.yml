@@ -34,20 +34,26 @@ jobs:
       - name: Build Vite
         run: npm run build
       - name: Paridade funcional essencial
+        shell: bash
         run: |
-          grep -Fq 'Destino da entrada' src/components/FinancialSheet.tsx
-          grep -Fq 'Pagar com' src/components/FinancialSheet.tsx
-          grep -Fq 'Transferir para o casal' src/pages/SharingPage.tsx
-          grep -Fq 'Haver' src/components/FinancialSheet.tsx
-          grep -Fq 'Relatório' src/pages/ReportPage.tsx
-          grep -Fq 'Gerar PDF' src/pages/ReportPage.tsx
-          grep -Fq '/api/wallet/transfers' src/App.tsx
-          grep -Fq '/api/auth/login' src/api/client.ts
-          grep -Fq '/api/webauthn' src/security/passkeys.ts
-          grep -Fq 'ProfileSwitcher' src/App.tsx
-          if grep -Rin -i "extrato" src; then echo 'Nomenclatura antiga encontrada.' >&2; exit 1; fi
+          set -euo pipefail
+          need(){ local label="$1" file="$2" text="$3"; if grep -Fq "$text" "$file"; then echo "✓ $label"; else echo "✗ $label — ausente em $file" >&2; exit 1; fi; }
+          need 'Destino da entrada' src/components/FinancialSheet.tsx 'Destino da entrada'
+          need 'Pagar com' src/components/FinancialSheet.tsx 'Pagar com'
+          need 'Transferir para o casal' src/pages/SharingPage.tsx 'Transferir para o casal'
+          need 'Haver' src/components/FinancialSheet.tsx 'Haver'
+          need 'Relatório' src/pages/ReportPage.tsx 'Relatório'
+          need 'Gerar PDF' src/pages/ReportPage.tsx 'Gerar PDF'
+          need 'API de transferência' src/App.tsx '/api/wallet/transfers'
+          need 'Login' src/api/client.ts '/api/auth/login'
+          need 'Desbloqueio do aparelho' src/security/passkeys.ts '/api/webauthn'
+          need 'Perfis Pessoal/Casal' src/App.tsx 'ProfileSwitcher'
+          if MATCHES="$(grep -Rin -i 'extrato' src || true)" && [ -n "$MATCHES" ]; then printf '%s\n' "$MATCHES"; echo '✗ nomenclatura antiga encontrada' >&2; exit 1; fi
+          echo '✓ nomenclatura somente Relatório'
       - name: PWA e offline-first
+        shell: bash
         run: |
+          set -euo pipefail
           test -s dist/index.html
           test -s dist/manifest.webmanifest
           test -s dist/sw.js
@@ -55,18 +61,21 @@ jobs:
           grep -Fq 'indexedDB.open' src/offline/db.ts
           grep -Fq "url.pathname.startsWith('/api/')" public/sw.js
           grep -Fq 'clearFinancialCache' src/offline/db.ts
-          ! grep -R "setInterval" src
+          if grep -R "setInterval" src; then echo 'setInterval proibido' >&2; exit 1; fi
+          echo '✓ PWA e IndexedDB offline-first'
       - name: Orçamento de bundle
         run: |
           BYTES=$(find dist/assets -type f \( -name '*.js' -o -name '*.css' \) -printf '%s\n' | awk '{s+=$1} END {print s+0}')
           echo "Bundle JS+CSS: ${BYTES} bytes"
           test "$BYTES" -le 450000
       - name: Política de baixo consumo
+        shell: bash
         run: |
+          set -euo pipefail
           grep -Fq 'ACTIVE_FRESH_MS' src/sync/engine.ts
           grep -Fq 'PREFETCH_FRESH_MS' src/sync/engine.ts
           grep -Fq 'MAX_MUTATION_ATTEMPTS' src/sync/engine.ts
-          ! grep -R "poll" src/sync
-          ! grep -R "setInterval" src/sync
-          ! grep -R "fetch('/api/version" src
-          echo 'Ritmo Next aprovado sem chamadas Cloudflare no CI.'
+          if grep -R -i "poll" src/sync; then echo 'polling proibido' >&2; exit 1; fi
+          if grep -R "setInterval" src/sync; then echo 'setInterval proibido' >&2; exit 1; fi
+          if grep -R "fetch('/api/version" src; then echo 'consulta repetitiva de versão proibida' >&2; exit 1; fi
+          echo '✓ Ritmo Next aprovado sem chamadas Cloudflare no CI.'
