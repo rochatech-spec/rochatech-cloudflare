@@ -1,8 +1,8 @@
 package com.rochatech.aurora;
 
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
 import android.appwidget.AppWidgetHost;
 import android.appwidget.AppWidgetHostView;
 import android.appwidget.AppWidgetManager;
@@ -16,7 +16,9 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RadialGradient;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -35,6 +37,7 @@ import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -46,8 +49,10 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public class AuroraLauncherActivity extends Activity {
@@ -60,13 +65,21 @@ public class AuroraLauncherActivity extends Activity {
 
     private final Locale ptBR = new Locale("pt", "BR");
     private final List<AppInfo> apps = new ArrayList<>();
+    private final Handler statusHandler = new Handler();
+    private final List<View> editableIcons = new ArrayList<>();
     private FrameLayout root;
+    private Pager pager;
+    private LinearLayout pageStrip;
+    private LinearLayout dots;
+    private TextView statusTime;
+    private TextView statusBattery;
     private AppWidgetHost widgetHost;
     private AppWidgetManager widgetManager;
     private int pendingWidgetId = -1;
-    private float downX, downY;
-    private final Handler statusHandler = new Handler();
-    private TextView statusTime, statusBattery;
+    private int homePageCount = 1;
+    private int screenWidth;
+    private boolean editing = false;
+
     private final Runnable statusTick = new Runnable() {
         @Override public void run() {
             updateStatus();
@@ -77,11 +90,12 @@ public class AuroraLauncherActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         configureWindow();
+        screenWidth = getResources().getDisplayMetrics().widthPixels;
         widgetHost = new AppWidgetHost(this, HOST_ID);
         widgetManager = AppWidgetManager.getInstance(this);
         loadApps();
         buildHome();
-        if (getIntent().getBooleanExtra("openEditor", false)) root.postDelayed(this::showEditMenu, 250);
+        if (getIntent().getBooleanExtra("openEditor", false)) root.postDelayed(this::enterEditMode, 220);
     }
 
     @Override protected void onStart() {
@@ -97,7 +111,7 @@ public class AuroraLauncherActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         loadApps();
-        if (root != null) buildHome();
+        if (root != null && !editing) buildHome();
         statusHandler.removeCallbacks(statusTick);
         statusHandler.post(statusTick);
     }
@@ -126,44 +140,85 @@ public class AuroraLauncherActivity extends Activity {
     }
 
     private void buildHome() {
+        editing = false;
+        editableIcons.clear();
         root = new FrameLayout(this);
         root.setBackground(new HomeBackgroundDrawable(false));
-        root.setOnLongClickListener(v -> { showEditMenu(); return true; });
-        root.setOnTouchListener((v, e) -> {
-            if (e.getAction() == MotionEvent.ACTION_DOWN) { downX = e.getX(); downY = e.getY(); }
-            if (e.getAction() == MotionEvent.ACTION_UP) {
-                float dx = e.getX() - downX, dy = e.getY() - downY;
-                if (Math.abs(dx) < dp(70) && dy > dp(100)) { showAppLibrary(); return true; }
-            }
-            return false;
-        });
+        root.setOnLongClickListener(v -> { enterEditMode(); return true; });
 
-        LinearLayout shell = new LinearLayout(this);
-        shell.setOrientation(LinearLayout.VERTICAL);
-        shell.setPadding(dp(14), dp(6), dp(14), dp(14));
-        root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout vertical = new LinearLayout(this);
+        vertical.setOrientation(LinearLayout.VERTICAL);
+        root.addView(vertical, new FrameLayout.LayoutParams(-1, -1));
+
+        vertical.addView(buildStatusBar(), new LinearLayout.LayoutParams(-1, dp(50)));
+
+        pager = new Pager(this);
+        pager.setHorizontalScrollBarEnabled(false);
+        pager.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        pager.setFillViewport(true);
+        pageStrip = new LinearLayout(this);
+        pageStrip.setOrientation(LinearLayout.HORIZONTAL);
+        pager.addView(pageStrip, new HorizontalScrollView.LayoutParams(-2, -1));
+
+        List<AppInfo> dockApps = pickDockApps();
+        List<AppInfo> pageApps = new ArrayList<>();
+        for (AppInfo app : apps) if (!dockApps.contains(app)) pageApps.add(app);
+
+        int widgetId = getPreferences().getInt(KEY_WIDGET, -1);
+        AppWidgetProviderInfo widgetInfo = widgetId > 0 ? widgetManager.getAppWidgetInfo(widgetId) : null;
+        boolean hasWidget = widgetInfo != null;
+        int firstCapacity = hasWidget ? 16 : 24;
+        int remaining = Math.max(0, pageApps.size() - firstCapacity);
+        homePageCount = Math.max(1, 1 + (int)Math.ceil(remaining / 24.0));
+
+        int cursor = 0;
+        for (int p = 0; p < homePageCount; p++) {
+            int cap = p == 0 ? firstCapacity : 24;
+            List<AppInfo> slice = new ArrayList<>();
+            while (cursor < pageApps.size() && slice.size() < cap) slice.add(pageApps.get(cursor++));
+            pageStrip.addView(buildAppPage(slice, p == 0 ? widgetInfo : null),
+                    new LinearLayout.LayoutParams(screenWidth, -1));
+        }
+        pageStrip.addView(buildLibraryPage(), new LinearLayout.LayoutParams(screenWidth, -1));
+
+        LinearLayout.LayoutParams pagerP = new LinearLayout.LayoutParams(-1, 0, 1f);
+        vertical.addView(pager, pagerP);
+
+        LinearLayout lower = new LinearLayout(this);
+        lower.setOrientation(LinearLayout.VERTICAL);
+        lower.setGravity(Gravity.CENTER_HORIZONTAL);
+        lower.setPadding(dp(10), 0, dp(10), dp(10));
+        lower.addView(buildPageIndicator(), new LinearLayout.LayoutParams(-1, dp(34)));
+        lower.addView(buildDock(dockApps), new LinearLayout.LayoutParams(-1, dp(82)));
+        vertical.addView(lower, new LinearLayout.LayoutParams(-1, dp(126)));
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             int bottom = insets.getSystemWindowInsetBottom();
-            shell.setPadding(dp(14), dp(6), dp(14), Math.max(bottom + dp(8), dp(14)));
+            lower.setPadding(dp(10), 0, dp(10), Math.max(dp(8), bottom));
             return insets;
         });
 
+        setContentView(root);
+        pager.setPageCount(homePageCount + 1);
+        pager.setOnPageChangedListener(this::updatePageIndicator);
+        updatePageIndicator(0);
+    }
+
+    private View buildStatusBar() {
         FrameLayout status = new FrameLayout(this);
-        status.setPadding(dp(4), 0, dp(4), 0);
+        status.setPadding(dp(18), dp(6), dp(18), 0);
 
         statusTime = new TextView(this);
         statusTime.setTextColor(Color.WHITE);
-        statusTime.setTextSize(14);
-        statusTime.setGravity(Gravity.CENTER_VERTICAL);
+        statusTime.setTextSize(15);
+        statusTime.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
         statusTime.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        FrameLayout.LayoutParams timeP = new FrameLayout.LayoutParams(dp(88), -1, Gravity.START);
-        status.addView(statusTime, timeP);
+        status.addView(statusTime, new FrameLayout.LayoutParams(dp(92), -1, Gravity.START));
 
         View island = new View(this);
-        island.setBackground(roundRect(Color.BLACK, 18));
-        FrameLayout.LayoutParams islandP = new FrameLayout.LayoutParams(dp(94), dp(28), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        islandP.topMargin = dp(1);
+        island.setBackground(roundRect(Color.BLACK, 22));
+        FrameLayout.LayoutParams islandP = new FrameLayout.LayoutParams(dp(112), dp(34), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        islandP.topMargin = dp(2);
         status.addView(island, islandP);
 
         statusBattery = new TextView(this);
@@ -171,137 +226,221 @@ public class AuroraLauncherActivity extends Activity {
         statusBattery.setTextSize(12);
         statusBattery.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         statusBattery.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        FrameLayout.LayoutParams batteryP = new FrameLayout.LayoutParams(dp(104), -1, Gravity.END);
-        status.addView(statusBattery, batteryP);
-
-        shell.addView(status, new LinearLayout.LayoutParams(-1, dp(34)));
+        status.addView(statusBattery, new FrameLayout.LayoutParams(dp(120), -1, Gravity.END));
         updateStatus();
+        return status;
+    }
 
-        int widgetId = getPreferences().getInt(KEY_WIDGET, -1);
-        AppWidgetProviderInfo info = widgetId > 0 ? widgetManager.getAppWidgetInfo(widgetId) : null;
-        boolean hasWidget = info != null;
+    private View buildAppPage(List<AppInfo> pageApps, AppWidgetProviderInfo widgetInfo) {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(14), dp(6), dp(14), 0);
+        page.setGravity(Gravity.TOP);
+        page.setOnLongClickListener(v -> { enterEditMode(); return true; });
 
-        if (hasWidget) {
-            FrameLayout widgetFrame = new FrameLayout(this);
-            widgetFrame.setBackground(roundRect(Color.argb(40,255,255,255), 24));
-            widgetFrame.setClipToOutline(true);
-            AppWidgetHostView hostView = widgetHost.createView(this, widgetId, info);
-            hostView.setAppWidget(widgetId, info);
-            widgetFrame.addView(hostView, new FrameLayout.LayoutParams(-1, -1));
-            LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1, dp(158));
-            wp.setMargins(dp(4), dp(4), dp(4), dp(12));
-            shell.addView(widgetFrame, wp);
+        if (widgetInfo != null) {
+            int widgetId = getPreferences().getInt(KEY_WIDGET, -1);
+            FrameLayout frame = new FrameLayout(this);
+            frame.setBackground(roundRect(Color.argb(34, 255, 255, 255), 23));
+            frame.setClipToOutline(true);
+            AppWidgetHostView hostView = widgetHost.createView(this, widgetId, widgetInfo);
+            hostView.setAppWidget(widgetId, widgetInfo);
+            frame.addView(hostView, new FrameLayout.LayoutParams(-1, -1));
+            LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1, dp(164));
+            wp.setMargins(dp(3), 0, dp(3), dp(8));
+            page.addView(frame, wp);
         }
 
         GridLayout grid = new GridLayout(this);
         grid.setColumnCount(4);
-        grid.setRowCount(hasWidget ? 4 : 6);
+        int rows = widgetInfo == null ? 6 : 4;
+        grid.setRowCount(rows);
         grid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
-        int maxApps = hasWidget ? 16 : 24;
-        List<AppInfo> homeApps = pickHomeApps(maxApps);
-        for (int i = 0; i < homeApps.size(); i++) {
-            View tile = appTile(homeApps.get(i), true, false);
+        for (int i = 0; i < pageApps.size(); i++) {
+            View tile = appTile(pageApps.get(i), true, false);
             GridLayout.LayoutParams gp = new GridLayout.LayoutParams();
             gp.columnSpec = GridLayout.spec(i % 4, 1, 1f);
             gp.rowSpec = GridLayout.spec(i / 4, 1, 1f);
             gp.width = 0;
             gp.height = 0;
-            gp.setMargins(dp(2), dp(1), dp(2), dp(1));
+            gp.setMargins(dp(3), dp(1), dp(3), dp(1));
             tile.setLayoutParams(gp);
             grid.addView(tile);
         }
-        shell.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1f));
+        page.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1f));
+        return page;
+    }
 
-        TextView search = new TextView(this);
-        search.setText("⌕  Buscar");
-        search.setTextSize(13);
-        search.setTextColor(Color.WHITE);
-        search.setGravity(Gravity.CENTER);
-        search.setBackground(roundRect(Color.argb(82, 30, 36, 45), 22));
-        search.setOnClickListener(v -> showAppLibrary());
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(96), dp(32));
-        sp.gravity = Gravity.CENTER_HORIZONTAL;
-        sp.setMargins(0, dp(4), 0, dp(8));
-        shell.addView(search, sp);
-
+    private View buildDock(List<AppInfo> dockApps) {
         LinearLayout dock = new LinearLayout(this);
         dock.setOrientation(LinearLayout.HORIZONTAL);
         dock.setGravity(Gravity.CENTER);
-        dock.setPadding(dp(8), dp(7), dp(8), dp(7));
-        dock.setBackground(roundRect(Color.argb(118, 238, 241, 245), 31));
-        dock.setElevation(dp(8));
-        for (AppInfo app : pickDockApps()) {
+        dock.setPadding(dp(10), dp(8), dp(10), dp(8));
+        dock.setBackground(roundRect(Color.argb(142, 235, 238, 243), 32));
+        dock.setElevation(dp(7));
+        for (AppInfo app : dockApps) {
             View tile = appTile(app, false, true);
             dock.addView(tile, new LinearLayout.LayoutParams(0, -1, 1f));
         }
-        LinearLayout.LayoutParams dpDock = new LinearLayout.LayoutParams(-1, dp(78));
-        dpDock.setMargins(dp(3), 0, dp(3), 0);
-        shell.addView(dock, dpDock);
+        return dock;
+    }
 
-        setContentView(root);
+    private View buildPageIndicator() {
+        FrameLayout holder = new FrameLayout(this);
+        dots = new LinearLayout(this);
+        dots.setOrientation(LinearLayout.HORIZONTAL);
+        dots.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams dpv = new FrameLayout.LayoutParams(-2, dp(28), Gravity.CENTER);
+        holder.addView(dots, dpv);
+        for (int i = 0; i < homePageCount; i++) {
+            View dot = new View(this);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(7), dp(7));
+            p.setMargins(dp(3), 0, dp(3), 0);
+            dots.addView(dot, p);
+        }
+        TextView search = new TextView(this);
+        search.setText("⌕");
+        search.setTextSize(18);
+        search.setTextColor(Color.WHITE);
+        search.setGravity(Gravity.CENTER);
+        search.setBackground(roundRect(Color.argb(68, 30, 32, 38), 15));
+        search.setOnClickListener(v -> pager.goToPage(homePageCount));
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(dp(30), dp(26), Gravity.END | Gravity.CENTER_VERTICAL);
+        sp.rightMargin = dp(5);
+        holder.addView(search, sp);
+        return holder;
+    }
+
+    private void updatePageIndicator(int page) {
+        if (dots == null) return;
+        for (int i = 0; i < dots.getChildCount(); i++) {
+            View d = dots.getChildAt(i);
+            int alpha = (page == i) ? 235 : 95;
+            d.setBackground(roundRect(Color.argb(alpha, 255, 255, 255), 4));
+        }
+        dots.setAlpha(page >= homePageCount ? .35f : 1f);
     }
 
     private View appTile(AppInfo app, boolean label, boolean dock) {
         LinearLayout cell = new LinearLayout(this);
         cell.setOrientation(LinearLayout.VERTICAL);
         cell.setGravity(Gravity.CENTER);
-        cell.setPadding(dp(2), dp(2), dp(2), dp(2));
+        cell.setPadding(dp(2), dp(1), dp(2), dp(1));
         cell.setClickable(true);
-        cell.setOnClickListener(v -> launch(app));
-        cell.setOnLongClickListener(v -> { showAppActions(app); return true; });
+        cell.setOnClickListener(v -> {
+            if (editing) return;
+            launch(app);
+        });
+        cell.setOnLongClickListener(v -> {
+            if (!editing) enterEditMode();
+            return true;
+        });
 
         FrameLayout iconFrame = new FrameLayout(this);
         iconFrame.setBackground(roundRect(Color.TRANSPARENT, 15));
         iconFrame.setClipToOutline(true);
 
         ImageView icon = new ImageView(this);
-        icon.setImageDrawable(app.icon);
-        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        icon.setPadding(0, 0, 0, 0);
+        icon.setImageDrawable(makeIosIcon(app));
+        icon.setScaleType(ImageView.ScaleType.FIT_XY);
         iconFrame.addView(icon, new FrameLayout.LayoutParams(-1, -1));
-        int size = dp(dock ? 57 : 58);
+        int size = dp(dock ? 58 : 59);
         cell.addView(iconFrame, new LinearLayout.LayoutParams(size, size));
 
         if (label) {
             TextView name = new TextView(this);
             name.setText(app.label);
             name.setTextColor(Color.WHITE);
-            name.setShadowLayer(3f, 0f, 1f, Color.argb(150,0,0,0));
+            name.setShadowLayer(3f, 0f, 1f, Color.argb(155, 0, 0, 0));
             name.setTextSize(11);
             name.setGravity(Gravity.CENTER);
             name.setSingleLine(true);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(20));
-            np.topMargin = dp(2);
+            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(19));
+            np.topMargin = dp(3);
             cell.addView(name, np);
         }
+        editableIcons.add(cell);
         return cell;
     }
 
-    private void showAppActions(AppInfo app) {
-        new AlertDialog.Builder(this)
-                .setTitle(app.label)
-                .setItems(new String[]{"Abrir", "Informações do app", "Editar Tela de Início"}, (d, which) -> {
-                    if (which == 0) launch(app);
-                    if (which == 1) {
-                        try {
-                            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    android.net.Uri.parse("package:" + app.packageName));
-                            startActivity(i);
-                        } catch (Exception ignored) {}
-                    }
-                    if (which == 2) showEditMenu();
-                }).show();
+    private Drawable makeIosIcon(AppInfo app) {
+        String n = normalize(app.label);
+        int kind = 0;
+        if (contains(n, "telefone", "phone")) kind = 1;
+        else if (contains(n, "mensag", "messages")) kind = 2;
+        else if (contains(n, "camera", "câmera")) kind = 3;
+        else if (contains(n, "foto", "photos", "galeria", "gallery")) kind = 4;
+        else if (contains(n, "calend", "calendar")) kind = 5;
+        else if (contains(n, "nota", "notes")) kind = 6;
+        else if (contains(n, "ajustes", "configura", "settings")) kind = 7;
+        else if (contains(n, "relog", "relóg", "clock")) kind = 8;
+        else if (contains(n, "mapas", "maps")) kind = 9;
+        else if (contains(n, "music", "música")) kind = 10;
+        else if (contains(n, "clima", "weather")) kind = 11;
+        else if (contains(n, "mail", "email", "gmail")) kind = 12;
+        else if (contains(n, "chrome", "internet", "browser", "safari")) kind = 13;
+        return new IosIconDrawable(kind, app.icon);
     }
 
-    private void showEditMenu() {
-        new AlertDialog.Builder(this)
-                .setTitle("Editar Tela de Início")
-                .setItems(new String[]{"Adicionar widget", "Papéis de parede", "Biblioteca de Apps"}, (d, which) -> {
-                    if (which == 0) beginPickWidget();
-                    if (which == 1) startActivity(new Intent(this, AuroraSettingsActivity.class).putExtra("section", "wallpaper"));
-                    if (which == 2) showAppLibrary();
-                }).show();
+    private void enterEditMode() {
+        if (editing) return;
+        editing = true;
+        for (View v : editableIcons) startWiggle(v);
+        showEditOverlay();
+    }
+
+    private void leaveEditMode() {
+        editing = false;
+        for (View v : editableIcons) {
+            v.animate().cancel();
+            v.setRotation(0f);
+            v.setScaleX(1f);
+            v.setScaleY(1f);
+        }
+        View overlay = root.findViewWithTag("edit_overlay");
+        if (overlay != null) root.removeView(overlay);
+    }
+
+    private void startWiggle(View v) {
+        ObjectAnimator r = ObjectAnimator.ofFloat(v, View.ROTATION, -1.2f, 1.2f);
+        r.setDuration(120);
+        r.setRepeatMode(ObjectAnimator.REVERSE);
+        r.setRepeatCount(ObjectAnimator.INFINITE);
+        r.start();
+    }
+
+    private void showEditOverlay() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setTag("edit_overlay");
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(12), dp(7), dp(12), dp(7));
+        bar.setBackground(roundRect(Color.argb(235, 245, 245, 247), 24));
+        bar.setElevation(dp(18));
+
+        TextView add = editButton("＋", "Widget", v -> beginPickWidget());
+        TextView wallpaper = editButton("◉", "Fundo", v -> startActivity(new Intent(this, AuroraSettingsActivity.class).putExtra("section", "wallpaper")));
+        TextView done = editButton("✓", "OK", v -> leaveEditMode());
+        bar.addView(add, new LinearLayout.LayoutParams(0, -1, 1f));
+        bar.addView(wallpaper, new LinearLayout.LayoutParams(0, -1, 1f));
+        bar.addView(done, new LinearLayout.LayoutParams(0, -1, 1f));
+
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, dp(66), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        p.leftMargin = dp(18);
+        p.rightMargin = dp(18);
+        p.topMargin = dp(54);
+        root.addView(bar, p);
+    }
+
+    private TextView editButton(String icon, String label, View.OnClickListener click) {
+        TextView b = new TextView(this);
+        b.setText(icon + "  " + label);
+        b.setTextSize(14);
+        b.setTextColor(Color.rgb(25, 25, 27));
+        b.setGravity(Gravity.CENTER);
+        b.setOnClickListener(click);
+        return b;
     }
 
     private void beginPickWidget() {
@@ -328,9 +467,7 @@ public class AuroraLauncherActivity extends Activity {
                 bind.putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider);
                 pendingWidgetId = id;
                 startActivityForResult(bind, REQ_BIND_WIDGET);
-            } else {
-                configureOrSaveWidget(id, info);
-            }
+            } else configureOrSaveWidget(id, info);
         } else if (requestCode == REQ_BIND_WIDGET) {
             if (resultCode != RESULT_OK) { cleanupPendingWidget(); return; }
             AppWidgetProviderInfo info = widgetManager.getAppWidgetInfo(pendingWidgetId);
@@ -367,83 +504,157 @@ public class AuroraLauncherActivity extends Activity {
         pendingWidgetId = -1;
     }
 
-    private void showAppLibrary() {
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar);
-        FrameLayout page = new FrameLayout(this);
-        page.setBackground(new HomeBackgroundDrawable(true));
-
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(18), dp(50), dp(18), dp(18));
-        page.addView(body, new FrameLayout.LayoutParams(-1, -1));
+    private View buildLibraryPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(18), dp(2), dp(18), dp(4));
 
         TextView title = new TextView(this);
         title.setText("Biblioteca de Apps");
         title.setTextSize(28);
         title.setTextColor(Color.WHITE);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        body.addView(title);
+        page.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
 
         EditText search = new EditText(this);
         search.setHint("Buscar");
-        search.setHintTextColor(Color.argb(170,255,255,255));
+        search.setHintTextColor(Color.argb(165, 255, 255, 255));
         search.setTextColor(Color.WHITE);
         search.setSingleLine(true);
         search.setTextSize(16);
         search.setPadding(dp(16), 0, dp(16), 0);
-        search.setBackground(roundRect(Color.argb(90,255,255,255), 16));
-        LinearLayout.LayoutParams searchP = new LinearLayout.LayoutParams(-1, dp(46));
-        searchP.setMargins(0, dp(14), 0, dp(12));
-        body.addView(search, searchP);
+        search.setBackground(roundRect(Color.argb(90, 255, 255, 255), 16));
+        page.addView(search, new LinearLayout.LayoutParams(-1, dp(46)));
 
         ScrollView scroll = new ScrollView(this);
-        GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(4);
-        grid.setPadding(0, dp(4), 0, dp(24));
-        scroll.addView(grid, new ScrollView.LayoutParams(-1, -2));
-        body.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-        fillLibrary(grid, "");
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(0, dp(12), 0, dp(16));
+        scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
+        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        fillLibraryCategories(content);
+
         search.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            public void onTextChanged(CharSequence s, int start, int before, int count) { fillLibrary(grid, s.toString()); }
-            public void afterTextChanged(Editable s) {}
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String q = s == null ? "" : s.toString().trim();
+                if (q.isEmpty()) fillLibraryCategories(content); else fillLibrarySearch(content, q);
+            }
+            @Override public void afterTextChanged(Editable s) {}
         });
+        return page;
+    }
 
-        TextView close = new TextView(this);
-        close.setText("Concluído");
-        close.setGravity(Gravity.CENTER);
-        close.setTextColor(Color.WHITE);
-        close.setTextSize(15);
-        close.setBackground(roundRect(Color.argb(82,255,255,255), 20));
-        close.setOnClickListener(v -> dialog.dismiss());
-        body.addView(close, new LinearLayout.LayoutParams(-1, dp(46)));
-
-        dialog.setContentView(page);
-        dialog.show();
-        Window w = dialog.getWindow();
-        if (w != null) {
-            w.setLayout(-1, -1);
-            w.setStatusBarColor(Color.TRANSPARENT);
-            w.setNavigationBarColor(Color.TRANSPARENT);
+    private void fillLibraryCategories(LinearLayout content) {
+        content.removeAllViews();
+        Map<String, List<AppInfo>> groups = categorizeApps();
+        List<Map.Entry<String, List<AppInfo>>> entries = new ArrayList<>(groups.entrySet());
+        for (int i = 0; i < entries.size(); i += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.TOP);
+            row.addView(categoryCard(entries.get(i).getKey(), entries.get(i).getValue()),
+                    new LinearLayout.LayoutParams(0, dp(194), 1f));
+            if (i + 1 < entries.size()) {
+                LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(dp(12), 1);
+                View spacer = new View(this);
+                row.addView(spacer, gap);
+                row.addView(categoryCard(entries.get(i + 1).getKey(), entries.get(i + 1).getValue()),
+                        new LinearLayout.LayoutParams(0, dp(194), 1f));
+            }
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, dp(204));
+            content.addView(row, rp);
         }
     }
 
-    private void fillLibrary(GridLayout grid, String qRaw) {
-        grid.removeAllViews();
-        String q = qRaw == null ? "" : qRaw.trim().toLowerCase(ptBR);
-        int index = 0;
+    private View categoryCard(String name, List<AppInfo> group) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(10), dp(9), dp(10), dp(8));
+        card.setBackground(roundRect(Color.argb(68, 255, 255, 255), 23));
+        TextView title = new TextView(this);
+        title.setText(name);
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(14);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        card.addView(title, new LinearLayout.LayoutParams(-1, dp(24)));
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(2);
+        int count = Math.min(4, group.size());
+        for (int i = 0; i < count; i++) {
+            View tile = libraryMiniTile(group.get(i));
+            GridLayout.LayoutParams gp = new GridLayout.LayoutParams();
+            gp.columnSpec = GridLayout.spec(i % 2, 1, 1f);
+            gp.rowSpec = GridLayout.spec(i / 2, 1, 1f);
+            gp.width = 0;
+            gp.height = 0;
+            gp.setMargins(dp(3), dp(3), dp(3), dp(3));
+            tile.setLayoutParams(gp);
+            grid.addView(tile);
+        }
+        card.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1f));
+        return card;
+    }
+
+    private View libraryMiniTile(AppInfo app) {
+        FrameLayout wrap = new FrameLayout(this);
+        ImageView icon = new ImageView(this);
+        icon.setImageDrawable(makeIosIcon(app));
+        icon.setScaleType(ImageView.ScaleType.FIT_XY);
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER);
+        wrap.addView(icon, p);
+        wrap.setOnClickListener(v -> launch(app));
+        return wrap;
+    }
+
+    private void fillLibrarySearch(LinearLayout content, String raw) {
+        content.removeAllViews();
+        String q = normalize(raw);
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(4);
+        int idx = 0;
         for (AppInfo app : apps) {
-            if (!q.isEmpty() && !app.label.toLowerCase(ptBR).contains(q)) continue;
+            if (!normalize(app.label).contains(q)) continue;
             View tile = appTile(app, true, false);
             GridLayout.LayoutParams gp = new GridLayout.LayoutParams();
-            gp.columnSpec = GridLayout.spec(index % 4, 1, 1f);
+            gp.columnSpec = GridLayout.spec(idx % 4, 1, 1f);
             gp.width = 0;
-            gp.height = dp(92);
+            gp.height = dp(94);
             gp.setMargins(dp(2), dp(4), dp(2), dp(4));
             tile.setLayoutParams(gp);
             grid.addView(tile);
-            index++;
+            idx++;
         }
+        content.addView(grid, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private Map<String, List<AppInfo>> categorizeApps() {
+        LinkedHashMap<String, List<AppInfo>> map = new LinkedHashMap<>();
+        map.put("Sugestões", new ArrayList<>());
+        map.put("Adicionados Recentemente", new ArrayList<>());
+        map.put("Redes Sociais", new ArrayList<>());
+        map.put("Entretenimento", new ArrayList<>());
+        map.put("Produtividade", new ArrayList<>());
+        map.put("Utilitários", new ArrayList<>());
+        map.put("Criatividade", new ArrayList<>());
+        map.put("Outros", new ArrayList<>());
+
+        for (int i = 0; i < apps.size() && map.get("Sugestões").size() < 4; i++) map.get("Sugestões").add(apps.get(i));
+        for (int i = Math.max(0, apps.size() - 4); i < apps.size(); i++) map.get("Adicionados Recentemente").add(apps.get(i));
+
+        for (AppInfo app : apps) {
+            String n = normalize(app.label + " " + app.packageName);
+            String key;
+            if (contains(n, "whatsapp", "instagram", "facebook", "telegram", "messenger", "tiktok", "threads", "x.com")) key = "Redes Sociais";
+            else if (contains(n, "youtube", "netflix", "spotify", "prime", "disney", "music", "música", "games", "jogo")) key = "Entretenimento";
+            else if (contains(n, "gmail", "outlook", "drive", "docs", "sheets", "office", "notion", "chatgpt", "calendar", "calend")) key = "Produtividade";
+            else if (contains(n, "camera", "câmera", "clock", "relog", "calcul", "settings", "configura", "files", "arquivo", "phone", "telefone", "maps", "mapas")) key = "Utilitários";
+            else if (contains(n, "photo", "foto", "gallery", "galeria", "canva", "editor", "capcut")) key = "Criatividade";
+            else key = "Outros";
+            if (!map.get(key).contains(app)) map.get(key).add(app);
+        }
+        return map;
     }
 
     private void loadApps() {
@@ -454,43 +665,31 @@ public class AuroraLauncherActivity extends Activity {
         List<ResolveInfo> found = pm.queryIntentActivities(query, 0);
         Set<String> seen = new HashSet<>();
         for (ResolveInfo r : found) {
-            String pkg = r.activityInfo.packageName;
-            if (!seen.add(pkg)) continue;
+            String key = r.activityInfo.packageName + "/" + r.activityInfo.name;
+            if (!seen.add(key)) continue;
             CharSequence label = r.loadLabel(pm);
-            apps.add(new AppInfo(label == null ? pkg : label.toString(), pkg, r.activityInfo.name, r.loadIcon(pm)));
+            apps.add(new AppInfo(label == null ? r.activityInfo.packageName : label.toString(),
+                    r.activityInfo.packageName, r.activityInfo.name, r.loadIcon(pm)));
         }
         Collator c = Collator.getInstance(ptBR);
-        apps.sort((a,b) -> c.compare(a.label, b.label));
-    }
-
-    private List<AppInfo> pickHomeApps(int max) {
-        List<AppInfo> out = new ArrayList<>();
-        String[] priorities = {"Telefone","Phone","Mensagens","Messages","WhatsApp","Câmera","Camera","Fotos","Photos",
-                "Galeria","Gallery","Chrome","Safari","Mapas","Maps","YouTube","Música","Music","Spotify",
-                "Calendário","Calendar","Notas","Notes","Relógio","Clock","Clima","Weather","Configurações","Settings"};
-        for (String p : priorities) {
-            AppInfo found = findByLabel(p);
-            if (found != null && !out.contains(found) && out.size() < max) out.add(found);
-        }
-        for (AppInfo a : apps) if (!out.contains(a) && !a.packageName.equals(getPackageName()) && out.size() < max) out.add(a);
-        return out;
+        apps.sort((a, b) -> c.compare(a.label, b.label));
     }
 
     private List<AppInfo> pickDockApps() {
         List<AppInfo> out = new ArrayList<>();
-        String[] priorities = {"Telefone","Phone","Mensagens","Messages","Chrome","Câmera","Camera","WhatsApp"};
+        String[] priorities = {"Telefone", "Phone", "Mensagens", "Messages", "Safari", "Chrome", "Música", "Music", "WhatsApp"};
         for (String p : priorities) {
             AppInfo a = findByLabel(p);
             if (a != null && !out.contains(a) && out.size() < 4) out.add(a);
         }
-        for (AppInfo a : apps) if (!out.contains(a) && !a.packageName.equals(getPackageName()) && out.size() < 4) out.add(a);
+        for (AppInfo a : apps) if (!out.contains(a) && out.size() < 4) out.add(a);
         return out;
     }
 
     private AppInfo findByLabel(String wanted) {
-        String w = wanted.toLowerCase(ptBR);
-        for (AppInfo a : apps) if (a.label.toLowerCase(ptBR).equals(w)) return a;
-        for (AppInfo a : apps) if (a.label.toLowerCase(ptBR).contains(w)) return a;
+        String w = normalize(wanted);
+        for (AppInfo a : apps) if (normalize(a.label).equals(w)) return a;
+        for (AppInfo a : apps) if (normalize(a.label).contains(w)) return a;
         return null;
     }
 
@@ -517,11 +716,17 @@ public class AuroraLauncherActivity extends Activity {
                 BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
                 level = bm != null ? bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) : 0;
             } catch (Exception ignored) {}
-            statusBattery.setText("●●●   ᯤ   " + Math.max(0, level) + "%");
+            statusBattery.setText("▮▮▮   5G   " + Math.max(0, level) + "%");
         }
     }
 
     private SharedPreferences getPreferences() { return getSharedPreferences(PREFS, MODE_PRIVATE); }
+
+    private String normalize(String s) { return s == null ? "" : s.toLowerCase(ptBR); }
+    private boolean contains(String s, String... terms) {
+        for (String t : terms) if (s.contains(t)) return true;
+        return false;
+    }
 
     private GradientDrawable roundRect(int color, int radiusDp) {
         GradientDrawable g = new GradientDrawable();
@@ -535,38 +740,134 @@ public class AuroraLauncherActivity extends Activity {
     private static class AppInfo {
         final String label, packageName, activityName;
         final Drawable icon;
-        AppInfo(String l, String p, String a, Drawable i) { label=l; packageName=p; activityName=a; icon=i; }
+        AppInfo(String l, String p, String a, Drawable i) { label = l; packageName = p; activityName = a; icon = i; }
+    }
+
+    private class Pager extends HorizontalScrollView {
+        private int count = 1;
+        private int page = 0;
+        private PageChangedListener listener;
+        Pager(android.content.Context c) { super(c); }
+        void setPageCount(int c) { count = Math.max(1, c); }
+        void setOnPageChangedListener(PageChangedListener l) { listener = l; }
+        void goToPage(int p) {
+            page = Math.max(0, Math.min(count - 1, p));
+            smoothScrollTo(page * screenWidth, 0);
+            if (listener != null) listener.onChanged(page);
+        }
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            boolean r = super.onTouchEvent(e);
+            if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL) {
+                int target = Math.round(getScrollX() / (float)screenWidth);
+                goToPage(target);
+            }
+            return r;
+        }
+        @Override protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+            super.onScrollChanged(l, t, oldl, oldt);
+            int p = Math.round(l / (float)Math.max(1, screenWidth));
+            if (p != page) {
+                page = Math.max(0, Math.min(count - 1, p));
+                if (listener != null) listener.onChanged(page);
+            }
+        }
+    }
+
+    private interface PageChangedListener { void onChanged(int page); }
+
+    private class IosIconDrawable extends Drawable {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int kind;
+        private final Drawable fallback;
+        IosIconDrawable(int kind, Drawable fallback) { this.kind = kind; this.fallback = fallback; }
+
+        @Override public void draw(Canvas c) {
+            RectF r = new RectF(getBounds());
+            float rad = r.width() * .23f;
+            p.setShader(null);
+            p.setStyle(Paint.Style.FILL);
+            int bg = Color.rgb(242, 242, 247);
+            if (kind == 1 || kind == 2) bg = Color.rgb(52, 199, 89);
+            else if (kind == 3) bg = Color.rgb(232, 232, 237);
+            else if (kind == 8) bg = Color.rgb(20, 20, 22);
+            else if (kind == 10) bg = Color.rgb(252, 55, 95);
+            else if (kind == 11 || kind == 12) bg = Color.rgb(0, 122, 255);
+            c.drawRoundRect(r, rad, rad, paint(bg));
+
+            float w = r.width(), h = r.height(), cx = r.centerX(), cy = r.centerY();
+            if (kind == 0 || kind == 9 || kind == 13) {
+                if (fallback != null) {
+                    int inset = (int)(w * .07f);
+                    fallback.setBounds((int)r.left + inset, (int)r.top + inset, (int)r.right - inset, (int)r.bottom - inset);
+                    fallback.draw(c);
+                }
+                return;
+            }
+            if (kind == 1) {
+                p.setColor(Color.WHITE); p.setStrokeWidth(w*.10f); p.setStyle(Paint.Style.STROKE); p.setStrokeCap(Paint.Cap.ROUND);
+                Path path = new Path(); path.moveTo(cx-w*.22f, cy-h*.22f); path.cubicTo(cx-w*.10f, cy+h*.10f, cx+w*.02f, cy+h*.20f, cx+w*.24f, cy+h*.23f); c.drawPath(path,p);
+                p.setStyle(Paint.Style.FILL);
+            } else if (kind == 2) {
+                p.setColor(Color.WHITE); RectF b = new RectF(cx-w*.26f, cy-h*.20f, cx+w*.26f, cy+h*.15f); c.drawOval(b,p);
+                Path tail = new Path(); tail.moveTo(cx-w*.10f, cy+h*.10f); tail.lineTo(cx-w*.18f, cy+h*.25f); tail.lineTo(cx+w*.02f, cy+h*.14f); c.drawPath(tail,p);
+            } else if (kind == 3) {
+                p.setColor(Color.rgb(35,35,38)); c.drawCircle(cx,cy,w*.25f,p); p.setColor(Color.rgb(90,90,95)); c.drawCircle(cx,cy,w*.15f,p); p.setColor(Color.rgb(210,210,215)); c.drawCircle(cx-w*.22f,cy-h*.22f,w*.06f,p);
+            } else if (kind == 4) {
+                p.setColor(Color.WHITE); c.drawRoundRect(r,rad,rad,p);
+                int[] cols = {0xFFFF3B30,0xFFFF9500,0xFFFFCC00,0xFF34C759,0xFF00C7BE,0xFF007AFF,0xFF5856D6,0xFFAF52DE};
+                for(int i=0;i<8;i++){ double a=Math.PI*2*i/8; p.setColor(cols[i]); c.drawCircle(cx+(float)Math.cos(a)*w*.16f, cy+(float)Math.sin(a)*h*.16f, w*.11f,p); }
+                p.setColor(Color.WHITE); c.drawCircle(cx,cy,w*.07f,p);
+            } else if (kind == 5) {
+                p.setColor(Color.WHITE); c.drawRoundRect(r,rad,rad,p); p.setColor(Color.rgb(255,59,48)); c.drawRoundRect(new RectF(r.left,r.top,r.right,r.top+h*.28f),rad,rad,p); c.drawRect(r.left,r.top+h*.15f,r.right,r.top+h*.29f,p);
+                p.setColor(Color.rgb(35,35,38)); p.setTextAlign(Paint.Align.CENTER); p.setTextSize(w*.36f); p.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText(new SimpleDateFormat("d",ptBR).format(new Date()),cx,cy+h*.23f,p); p.setTypeface(null);
+            } else if (kind == 6) {
+                p.setColor(Color.WHITE); c.drawRoundRect(r,rad,rad,p); p.setColor(Color.rgb(255,204,0)); c.drawRect(r.left,r.top,r.right,r.top+h*.23f,p); p.setColor(Color.rgb(190,190,195)); p.setStrokeWidth(w*.03f); for(int i=0;i<4;i++) c.drawLine(r.left+w*.18f,r.top+h*(.38f+i*.12f),r.right-w*.14f,r.top+h*(.38f+i*.12f),p);
+            } else if (kind == 7) {
+                p.setColor(Color.rgb(142,142,147)); c.drawCircle(cx,cy,w*.27f,p); p.setColor(Color.rgb(242,242,247)); c.drawCircle(cx,cy,w*.13f,p); p.setColor(Color.rgb(142,142,147)); c.drawCircle(cx,cy,w*.065f,p);
+                p.setStrokeWidth(w*.075f); for(int i=0;i<8;i++){ double a=Math.PI*2*i/8; c.drawLine(cx+(float)Math.cos(a)*w*.25f,cy+(float)Math.sin(a)*w*.25f,cx+(float)Math.cos(a)*w*.34f,cy+(float)Math.sin(a)*w*.34f,p); }
+            } else if (kind == 8) {
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(w*.035f); p.setColor(Color.WHITE); c.drawCircle(cx,cy,w*.32f,p); p.setStrokeCap(Paint.Cap.ROUND); c.drawLine(cx,cy,cx,cy-h*.19f,p); c.drawLine(cx,cy,cx+w*.14f,cy+h*.10f,p); p.setStyle(Paint.Style.FILL);
+            } else if (kind == 10) {
+                p.setColor(Color.WHITE); p.setTextAlign(Paint.Align.CENTER); p.setTextSize(w*.62f); p.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("♪",cx,cy+h*.22f,p); p.setTypeface(null);
+            } else if (kind == 11) {
+                p.setColor(Color.rgb(255,204,0)); c.drawCircle(cx-w*.11f,cy-h*.08f,w*.16f,p); p.setColor(Color.WHITE); c.drawCircle(cx+w*.04f,cy+h*.07f,w*.18f,p); c.drawCircle(cx-w*.13f,cy+h*.11f,w*.14f,p); c.drawRect(cx-w*.15f,cy+h*.06f,cx+w*.25f,cy+h*.22f,p);
+            } else if (kind == 12) {
+                p.setColor(Color.WHITE); RectF env = new RectF(cx-w*.28f,cy-h*.19f,cx+w*.28f,cy+h*.19f); c.drawRoundRect(env,w*.04f,w*.04f,p); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(w*.035f); p.setColor(Color.rgb(0,122,255)); Path path=new Path(); path.moveTo(env.left,env.top); path.lineTo(cx,cy+h*.05f); path.lineTo(env.right,env.top); c.drawPath(path,p); p.setStyle(Paint.Style.FILL);
+            }
+        }
+
+        private Paint paint(int color){ p.setColor(color); p.setStyle(Paint.Style.FILL); p.setShader(null); return p; }
+        @Override public void setAlpha(int alpha) { p.setAlpha(alpha); }
+        @Override public void setColorFilter(android.graphics.ColorFilter cf) { p.setColorFilter(cf); }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     private class HomeBackgroundDrawable extends Drawable {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final boolean dark;
         HomeBackgroundDrawable(boolean d) { dark = d; }
-
         @Override public void draw(Canvas canvas) {
             int w = getBounds().width(), h = getBounds().height();
             int style = getSharedPreferences(AuroraSettingsActivity.PREFS, MODE_PRIVATE)
                     .getInt(AuroraSettingsActivity.KEY_STYLE, 0);
             int start, end, glow1, glow2;
             if (style == 1) {
-                start = Color.rgb(18,65,103); end = Color.rgb(76,118,155);
-                glow1 = Color.argb(170,104,194,220); glow2 = Color.argb(155,93,126,203);
+                start = Color.rgb(23, 61, 106); end = Color.rgb(95, 121, 164);
+                glow1 = Color.argb(178, 102, 194, 230); glow2 = Color.argb(160, 111, 84, 202);
             } else if (style == 2) {
-                start = Color.rgb(18,20,24); end = Color.rgb(47,49,55);
-                glow1 = Color.argb(105,120,132,150); glow2 = Color.argb(95,64,100,111);
+                start = Color.rgb(15, 17, 22); end = Color.rgb(45, 47, 55);
+                glow1 = Color.argb(110, 116, 130, 160); glow2 = Color.argb(92, 58, 95, 115);
             } else {
-                start = Color.rgb(43,64,94); end = Color.rgb(110,83,127);
-                glow1 = Color.argb(165,136,205,224); glow2 = Color.argb(150,57,143,158);
+                start = Color.rgb(55, 69, 111); end = Color.rgb(125, 82, 134);
+                glow1 = Color.argb(174, 132, 211, 235); glow2 = Color.argb(155, 59, 146, 175);
             }
             if (dark) { start = Color.rgb(18,22,30); end = Color.rgb(42,35,57); }
             p.setShader(new LinearGradient(0,0,w,h,start,end, Shader.TileMode.CLAMP));
             canvas.drawRect(0,0,w,h,p);
-            p.setShader(new RadialGradient(w*.18f,h*.28f,w*.55f,glow1,
-                    Color.TRANSPARENT, Shader.TileMode.CLAMP));
-            canvas.drawCircle(w*.18f,h*.28f,w*.55f,p);
-            p.setShader(new RadialGradient(w*.84f,h*.72f,w*.62f,glow2,
-                    Color.TRANSPARENT, Shader.TileMode.CLAMP));
-            canvas.drawCircle(w*.84f,h*.72f,w*.62f,p);
+            p.setShader(new RadialGradient(w*.14f,h*.22f,w*.60f,glow1,Color.TRANSPARENT, Shader.TileMode.CLAMP));
+            canvas.drawCircle(w*.14f,h*.22f,w*.60f,p);
+            p.setShader(new RadialGradient(w*.88f,h*.70f,w*.68f,glow2,Color.TRANSPARENT, Shader.TileMode.CLAMP));
+            canvas.drawCircle(w*.88f,h*.70f,w*.68f,p);
             p.setShader(null);
         }
         @Override public void setAlpha(int alpha) { p.setAlpha(alpha); }
