@@ -73,10 +73,14 @@ export async function prefetchOtherScope(scope: FinancialScope): Promise<void> {
   if (cached && now() - cached.savedAt < PREFETCH_FRESH_MS) return
 
   const run = () => void fetchAndCache(other).catch(() => undefined)
-  if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(run, { timeout: 1500 })
+  const idle = (window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+  }).requestIdleCallback
+
+  if (idle) {
+    idle(run, { timeout: 1500 })
   } else {
-    window.setTimeout(run, 600)
+    globalThis.setTimeout(run, 600)
   }
 }
 
