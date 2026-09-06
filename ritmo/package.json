@@ -1,0 +1,11 @@
+{
+  "name": "ritmo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.33.1"
+  }
+}
