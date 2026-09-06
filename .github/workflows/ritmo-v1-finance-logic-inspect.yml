@@ -41,18 +41,30 @@ jobs:
           python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
-      - name: Expor auth backend
+      - name: Expor trechos financeiros
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          s=Path('/tmp/ritmo-v1/_worker.js').read_text()
-          for needle in ['verifyPassword','passwordVerify','/api/auth/login','/api/auth/logout','requireUser','sessionToken','password_hash']:
-              print('\n===',needle,'===')
-              start=0;hits=0
-              while hits<8:
-                  p=s.find(needle,start)
-                  if p<0: break
-                  print(s[max(0,p-1800):p+5000])
-                  start=p+len(needle);hits+=1
+          app=Path('/tmp/ritmo-v1/public/app.js').read_text()
+          worker=Path('/tmp/ritmo-v1/_worker.js').read_text()
+          schema=Path('/tmp/ritmo-v1/schema.sql').read_text()
+          def func(src,name):
+              starts=[src.find(f'function {name}('),src.find(f'async function {name}(')]
+              starts=[x for x in starts if x>=0]
+              if not starts:return
+              p=min(starts);c=[]
+              for token in ['\nfunction ','\nasync function ']:
+                  q=src.find(token,p+1)
+                  if q>p:c.append(q)
+              q=min(c) if c else min(len(src),p+22000)
+              print(f'\n=== FUNC {name} ===\n'+src[p:q][:22000])
+          for n in ['modalHtml','incomePage','expensesPage','debtsPage','goalsPage','submitData','bindApp']:
+              func(app,n)
+          for needle in ['INSERT INTO incomes','UPDATE incomes SET','INSERT INTO shared_incomes','UPDATE shared_incomes SET','INSERT INTO expenses','UPDATE expenses SET','INSERT INTO shared_expenses','UPDATE shared_expenses SET']:
+              p=worker.find(needle)
+              if p>=0: print('\n===',needle,'===\n'+worker[max(0,p-1300):p+4000])
+          for table in ['incomes','shared_incomes','expenses','shared_expenses','debts','shared_debts']:
+              p=schema.find(f'CREATE TABLE IF NOT EXISTS {table}')
+              if p>=0: print('\n=== TABLE',table,'===\n'+schema[p:schema.find(';',p)+1])
           PY
