@@ -57,13 +57,19 @@ if not launch.exists():raise SystemExit('Patch de lançamento nativo não encont
 ns={'__name__':'__main__','__file__':str(launch)}
 exec(compile(launch.read_text(),str(launch),'exec'),ns,ns)
 
+# Fluidez global: troca Meu/Nosso pré-carregada e transições leves em todas as plataformas.
+smooth=Path(__file__).with_name('ritmo_v1_global_smoothness_patch.py')
+if not smooth.exists():raise SystemExit('Patch de fluidez global não encontrado')
+ns1={'__name__':'__main__','__file__':str(smooth)}
+exec(compile(smooth.read_text(),str(smooth),'exec'),ns1,ns1)
+
 # Prontidão comercial: correções finais e auditoria.
 commercial=Path(__file__).with_name('ritmo_v1_commercial_readiness_patch.py')
 if not commercial.exists():raise SystemExit('Patch de prontidão comercial não encontrado')
 ns2={'__name__':'__main__','__file__':str(commercial)}
 exec(compile(commercial.read_text(),str(commercial),'exec'),ns2,ns2)
 
-# Auditoria comercial v2: percorre a interface real e reabre cada seção pelo caminho normal.
+# Auditoria comercial: percorre a interface real e mede a troca Meu/Nosso sob latência simulada.
 dom_audit=Path(__file__).with_name('ritmo_v1_commercial_dom_audit_patch.py')
 if not dom_audit.exists():raise SystemExit('Auditoria comercial de interface não encontrada')
 ns3={'__name__':'__main__','__file__':str(dom_audit)}
