@@ -7,6 +7,7 @@ on:
       - ".github/workflows/ritmo-v1-interaction-polish-publish.yml"
       - ".github/scripts/ritmo_v1_action_sheet_icon_polish.py"
       - ".github/scripts/ritmo_v1_install_handoff_patch.py"
+      - ".github/scripts/ritmo_v1_theme_icons_drag_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -55,6 +56,7 @@ jobs:
           python3 .github/scripts/ritmo_v1_mobile_safearea_fix.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_action_sheet_icon_polish.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_install_handoff_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
 
       - name: Validar e buildar
         working-directory: /tmp/ritmo-v1
@@ -81,6 +83,13 @@ jobs:
           grep -Fq 'Ritmo instalado.' dist/app.js
           grep -Fq 'Continuar no navegador' dist/app.js
           grep -Fq 'launch_handler' dist/manifest.webmanifest
+          grep -Fq 'data-shortcut-drag' dist/app.js
+          grep -Fq 'bindShortcutDrag' dist/app.js
+          grep -Fq 'ritmoStatusBarSync' dist/app.js
+          grep -Fq 'semantic-income' dist/app.js
+          grep -Fq 'Ritmo V1 — tema, ícones e atalhos arrastáveis' dist/styles.css
+          grep -Fq 'content="#F7F5EF"' dist/index.html
+          if grep -Fq 'data-shortcut-move' dist/app.js; then echo 'Setas antigas ainda presentes'; exit 1; fi
 
       - name: Iniciar autorização Cloudflare
         id: auth
@@ -140,16 +149,19 @@ jobs:
         run: |
           set -euo pipefail
           BASE=https://ritmo-br.pages.dev
-          JS=000; CSS=000; MAN=000
+          JS=000; CSS=000; MAN=000; IDX=000
           for i in {1..36}; do
             JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?polish=$GITHUB_SHA" || true)"
             CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?polish=$GITHUB_SHA" || true)"
             MAN="$(curl -sS -o /tmp/manifest.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/manifest.webmanifest?polish=$GITHUB_SHA" || true)"
-            if [ "$JS" = 200 ] && [ "$CSS" = 200 ] && [ "$MAN" = 200 ] && grep -Fq 'action-sheet-wrap' /tmp/app.js && grep -Fq 'Ritmo instalado.' /tmp/app.js && grep -Fq 'Ritmo V1 — sheets de ação' /tmp/styles.css; then break; fi
+            IDX="$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?polish=$GITHUB_SHA" || true)"
+            if [ "$JS" = 200 ] && [ "$CSS" = 200 ] && [ "$MAN" = 200 ] && [ "$IDX" = 200 ] && grep -Fq 'data-shortcut-drag' /tmp/app.js && grep -Fq 'ritmoStatusBarSync' /tmp/app.js && grep -Fq 'Ritmo V1 — tema, ícones e atalhos arrastáveis' /tmp/styles.css; then break; fi
             sleep 5
           done
-          test "$JS" = 200; test "$CSS" = 200; test "$MAN" = 200
-          grep -Fq 'modal-save-bar' /tmp/app.js
-          grep -Fq 'Continuar no navegador' /tmp/app.js
-          grep -Fq 'launch_handler' /tmp/manifest.json
-          echo "Sheets, ícone e fluxo de instalação do Ritmo V1 validados em produção."
+          test "$JS" = 200; test "$CSS" = 200; test "$MAN" = 200; test "$IDX" = 200
+          grep -Fq 'bindShortcutDrag' /tmp/app.js
+          grep -Fq 'semantic-income' /tmp/app.js
+          grep -Fq 'Ritmo instalado.' /tmp/app.js
+          grep -Fq 'content="#F7F5EF"' /tmp/index.html
+          if grep -Fq 'data-shortcut-move' /tmp/app.js; then exit 1; fi
+          echo "Tema, status bar, ícones harmônicos e atalhos arrastáveis do Ritmo V1 validados em produção."
