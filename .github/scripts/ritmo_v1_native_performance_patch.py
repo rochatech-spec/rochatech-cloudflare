@@ -38,15 +38,14 @@ fn('ritmoTouchActivity',r'''function ritmoTouchActivity(){if(!state.data||docume
 fn('ritmoLastActivity',r'''function ritmoLastActivity(){const ak=ritmoActivityKey();let stored=0;try{stored=Number(sessionStorage.getItem(ak)||0)}catch{}return Math.max(ritmoActivityMemoryAt||0,stored)}''')
 
 # -----------------------------------------------------------------------------
-# Sincronização: deduplicada, pausada em segundo plano e menos agressiva.
-# Ações do usuário continuam salvando imediatamente pelas próprias APIs.
+# Sincronização: a base mantém syncIfNeeded + startSync na mesma linha.
+# Substituímos o bloco inteiro para preservar ambas e reduzir chamadas de rede.
 # -----------------------------------------------------------------------------
 fn('syncIfNeeded',r'''let ritmoSyncBusy=false;
 let ritmoLastVersionCheck=0;
 function ritmoSyncDelay(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;return c?.saveData||/2g/.test(String(c?.effectiveType||''))?600000:300000}
-async function syncIfNeeded(showToast=false,force=false){if(!state.data||document.hidden||!navigator.onLine||$('#secureLock')||ritmoSyncBusy)return false;const t=Date.now();if(!force&&t-ritmoLastVersionCheck<60000)return false;ritmoSyncBusy=true;ritmoLastVersionCheck=t;try{const v=await api('/api/version');if(Number(v.version)!==Number(state.data.profile.data_version)){const fresh=await api('/api/bootstrap');state.data=fresh;applyTheme(fresh.settings?.theme||'system');renderApp(false);if(showToast)toast('Ritmo sincronizado.');return true}return false}catch{return false}finally{ritmoSyncBusy=false}}''')
-
-fn('startSync',r'''function startSync(){clearTimeout(versionPoll);if(!state.data||document.hidden||!navigator.onLine)return;versionPoll=setTimeout(async()=>{await syncIfNeeded(false);startSync()},ritmoSyncDelay())}''')
+async function syncIfNeeded(showToast=false,force=false){if(!state.data||document.hidden||!navigator.onLine||$('#secureLock')||ritmoSyncBusy)return false;const t=Date.now();if(!force&&t-ritmoLastVersionCheck<60000)return false;ritmoSyncBusy=true;ritmoLastVersionCheck=t;try{const v=await api('/api/version');if(Number(v.version)!==Number(state.data.profile.data_version)){const fresh=await api('/api/bootstrap');state.data=fresh;applyTheme(fresh.settings?.theme||'system');renderApp(false);if(showToast)toast('Ritmo sincronizado.');return true}return false}catch{return false}finally{ritmoSyncBusy=false}}
+function startSync(){clearTimeout(versionPoll);if(!state.data||document.hidden||!navigator.onLine)return;versionPoll=setTimeout(async()=>{await syncIfNeeded(false);startSync()},ritmoSyncDelay())}''')
 
 # -----------------------------------------------------------------------------
 # Retorno ao app: uma única fila ociosa, sem rajada de fetch em focus/pageshow.
