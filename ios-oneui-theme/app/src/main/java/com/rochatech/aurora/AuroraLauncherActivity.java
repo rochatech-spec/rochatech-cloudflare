@@ -20,7 +20,9 @@ import android.graphics.RadialGradient;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -40,7 +42,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.Collator;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -61,6 +65,14 @@ public class AuroraLauncherActivity extends Activity {
     private AppWidgetManager widgetManager;
     private int pendingWidgetId = -1;
     private float downX, downY;
+    private final Handler statusHandler = new Handler();
+    private TextView statusTime, statusBattery;
+    private final Runnable statusTick = new Runnable() {
+        @Override public void run() {
+            updateStatus();
+            statusHandler.postDelayed(this, 60_000L);
+        }
+    };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -86,16 +98,30 @@ public class AuroraLauncherActivity extends Activity {
         super.onResume();
         loadApps();
         if (root != null) buildHome();
+        statusHandler.removeCallbacks(statusTick);
+        statusHandler.post(statusTick);
+    }
+
+    @Override protected void onPause() {
+        statusHandler.removeCallbacks(statusTick);
+        super.onPause();
     }
 
     private void configureWindow() {
         Window w = getWindow();
         w.setStatusBarColor(Color.TRANSPARENT);
         w.setNavigationBarColor(Color.TRANSPARENT);
-        w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS |
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(lp);
+        }
         w.getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
     }
 
@@ -114,15 +140,42 @@ public class AuroraLauncherActivity extends Activity {
 
         LinearLayout shell = new LinearLayout(this);
         shell.setOrientation(LinearLayout.VERTICAL);
-        shell.setPadding(dp(14), dp(50), dp(14), dp(14));
+        shell.setPadding(dp(14), dp(6), dp(14), dp(14));
         root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            int top = insets.getSystemWindowInsetTop();
             int bottom = insets.getSystemWindowInsetBottom();
-            shell.setPadding(dp(14), Math.max(top + dp(8), dp(44)), dp(14), Math.max(bottom + dp(8), dp(14)));
+            shell.setPadding(dp(14), dp(6), dp(14), Math.max(bottom + dp(8), dp(14)));
             return insets;
         });
+
+        FrameLayout status = new FrameLayout(this);
+        status.setPadding(dp(4), 0, dp(4), 0);
+
+        statusTime = new TextView(this);
+        statusTime.setTextColor(Color.WHITE);
+        statusTime.setTextSize(14);
+        statusTime.setGravity(Gravity.CENTER_VERTICAL);
+        statusTime.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        FrameLayout.LayoutParams timeP = new FrameLayout.LayoutParams(dp(88), -1, Gravity.START);
+        status.addView(statusTime, timeP);
+
+        View island = new View(this);
+        island.setBackground(roundRect(Color.BLACK, 18));
+        FrameLayout.LayoutParams islandP = new FrameLayout.LayoutParams(dp(94), dp(28), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        islandP.topMargin = dp(1);
+        status.addView(island, islandP);
+
+        statusBattery = new TextView(this);
+        statusBattery.setTextColor(Color.WHITE);
+        statusBattery.setTextSize(12);
+        statusBattery.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        statusBattery.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        FrameLayout.LayoutParams batteryP = new FrameLayout.LayoutParams(dp(104), -1, Gravity.END);
+        status.addView(statusBattery, batteryP);
+
+        shell.addView(status, new LinearLayout.LayoutParams(-1, dp(34)));
+        updateStatus();
 
         int widgetId = getPreferences().getInt(KEY_WIDGET, -1);
         AppWidgetProviderInfo info = widgetId > 0 ? widgetManager.getAppWidgetInfo(widgetId) : null;
@@ -198,14 +251,13 @@ public class AuroraLauncherActivity extends Activity {
         cell.setOnLongClickListener(v -> { showAppActions(app); return true; });
 
         FrameLayout iconFrame = new FrameLayout(this);
-        iconFrame.setBackground(roundRect(Color.argb(20,255,255,255), 15));
+        iconFrame.setBackground(roundRect(Color.TRANSPARENT, 15));
         iconFrame.setClipToOutline(true);
-        iconFrame.setElevation(dp(2));
 
         ImageView icon = new ImageView(this);
         icon.setImageDrawable(app.icon);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        icon.setPadding(dp(2), dp(2), dp(2), dp(2));
+        icon.setPadding(0, 0, 0, 0);
         iconFrame.addView(icon, new FrameLayout.LayoutParams(-1, -1));
         int size = dp(dock ? 57 : 58);
         cell.addView(iconFrame, new LinearLayout.LayoutParams(size, size));
@@ -454,6 +506,18 @@ public class AuroraLauncherActivity extends Activity {
                 Intent i = getPackageManager().getLaunchIntentForPackage(app.packageName);
                 if (i != null) startActivity(i);
             } catch (Exception ignored) {}
+        }
+    }
+
+    private void updateStatus() {
+        if (statusTime != null) statusTime.setText(new SimpleDateFormat("HH:mm", ptBR).format(new Date()));
+        if (statusBattery != null) {
+            int level = 0;
+            try {
+                BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
+                level = bm != null ? bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) : 0;
+            } catch (Exception ignored) {}
+            statusBattery.setText("●●●   ᯤ   " + Math.max(0, level) + "%");
         }
     }
 
