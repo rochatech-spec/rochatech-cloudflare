@@ -45,7 +45,7 @@ jobs:
           grep -Fq '/api/auth/login' src/api/client.ts
           grep -Fq '/api/webauthn' src/security/passkeys.ts
           grep -Fq 'ProfileSwitcher' src/App.tsx
-          ! grep -R -i "extrato" src
+          if grep -Rin -i "extrato" src; then echo 'Nomenclatura antiga encontrada.' >&2; exit 1; fi
       - name: PWA e offline-first
         run: |
           test -s dist/index.html
