@@ -16,7 +16,7 @@ def rep(old,new,label):
     s=s.replace(old,new,1)
 
 # Atualização manual: limpa apenas CacheStorage/service worker e recarrega da rede.
-update_fn=r'''async function updateSystemNow(){const btn=document.querySelector('[data-system-update]');if(btn){btn.disabled=true;btn.classList.add('updating')}toast('Atualizando Ritmo...');try{if('caches'in window){const keys=await caches.keys();await Promise.all(keys.filter(k=>k.toLowerCase().includes('ritmo')).map(k=>caches.delete(k)))}if('serviceWorker'in navigator){const regs=await navigator.serviceWorker.getRegistrations();for(const reg of regs){try{await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'})}catch{}for(const reg of regs){try{await reg.unregister()}catch{}}}try{await fetch('/sw.js?refresh='+Date.now(),{cache:'no-store'})}catch{}const u=new URL(location.href);u.searchParams.set('_ritmo_refresh',Date.now().toString());location.replace(u.toString())}catch(e){if(btn){btn.disabled=false;btn.classList.remove('updating')}toast('Não foi possível atualizar agora.')}}
+update_fn=r'''async function updateSystemNow(){const btn=document.querySelector('[data-system-update]');if(btn){btn.disabled=true;btn.classList.add('updating')}toast('Atualizando Ritmo...');try{if('caches'in window){const keys=await caches.keys();await Promise.all(keys.filter(k=>k.toLowerCase().includes('ritmo')).map(k=>caches.delete(k)))}if('serviceWorker'in navigator){const regs=await navigator.serviceWorker.getRegistrations();for(const reg of regs){try{await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'})}catch{}}for(const reg of regs){try{await reg.unregister()}catch{}}}try{await fetch('/sw.js?refresh='+Date.now(),{cache:'no-store'})}catch{}const u=new URL(location.href);u.searchParams.set('_ritmo_refresh',Date.now().toString());location.replace(u.toString())}catch(e){if(btn){btn.disabled=false;btn.classList.remove('updating')}toast('Não foi possível atualizar agora.')}}
 '''
 rep("function morePage(){",update_fn+"function morePage(){",'função morePage')
 
@@ -31,7 +31,6 @@ anchor="$$('[data-page]').forEach(b=>b.onclick=()=>{const next=b.dataset.page;"
 if anchor not in s:
     raise SystemExit('Trecho não encontrado: bind navegação')
 bind="document.querySelector('[data-system-update]')?.addEventListener('click',updateSystemNow);"
-# bindEvents é reexecutado a cada render; addEventListener é aplicado em elemento novo, então é seguro.
 insert_point="  $$('[data-new]').forEach(b=>b.onclick=()=>{state.modal={type:b.dataset.new};renderApp(false)});"
 if insert_point not in s:
     raise SystemExit('Trecho não encontrado: bind data-new')
