@@ -1,5 +1,5 @@
 from pathlib import Path
-import sys, hashlib, re
+import sys, hashlib, re, json
 
 root=Path(sys.argv[1])
 app=root/'public'/'app.js'
@@ -98,6 +98,34 @@ self.addEventListener('message',event=>{{if(event.data?.type==='SKIP_WAITING')se
 self.addEventListener('fetch',event=>{{const req=event.request;if(req.method!=='GET')return;const u=new URL(req.url);if(u.origin!==location.origin||u.pathname.startsWith('/api/'))return;event.respondWith((async()=>{{const c=await caches.open(CACHE);const key=req.mode==='navigate'?'/index.html':u.pathname;try{{const r=await fresh(req);if(req.mode==='navigate'){{await c.put('/index.html',r.clone());await c.put('/',r.clone())}}else await c.put(key,r.clone());return r}}catch{{const cached=await c.match(key)||await c.match(u.pathname)||await c.match('/index.html')||await c.match('/');if(cached)return cached;throw new Error('offline')}}}})())}});
 '''
 swp.write_text(sw)
+
+# Browser smoke real no CI: o build só é aceito se um Chrome headless conseguir
+# abrir o shell e renderizar uma interface (boas-vindas/login), não apenas se o
+# JavaScript tiver sintaxe válida.
+smoke=root/'ci-browser-smoke.mjs'
+smoke.write_text(r'''import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+if(!process.env.CI){console.log('Smoke de navegador reservado ao CI.');process.exit(0)}
+const dist=path.join(process.cwd(),'dist');
+const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png'};
+const server=http.createServer((req,res)=>{try{const u=new URL(req.url,'http://127.0.0.1');if(u.pathname.startsWith('/api/')){res.writeHead(401,{'content-type':'application/json'});res.end('{"error":"Não autenticado"}');return}let rel=u.pathname==='/'?'index.html':u.pathname.replace(/^\/+/, '');let file=path.join(dist,rel);if(!file.startsWith(dist)||!fs.existsSync(file)||fs.statSync(file).isDirectory())file=path.join(dist,'index.html');res.writeHead(200,{'content-type':mime[path.extname(file)]||'application/octet-stream','cache-control':'no-store'});fs.createReadStream(file).pipe(res)}catch(e){res.writeHead(500);res.end(String(e))}});
+await new Promise((resolve,reject)=>server.listen(4173,'127.0.0.1',e=>e?reject(e):resolve()));
+const candidates=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium','/usr/bin/chromium-browser'];
+const browser=candidates.find(fs.existsSync);if(!browser){server.close();throw new Error('Chrome/Chromium não encontrado no runner')}
+const args=['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=5000','--user-data-dir=/tmp/ritmo-ci-browser-'+Date.now(),'--dump-dom','http://127.0.0.1:4173/?ci-smoke=1'];
+const child=spawn(browser,args,{stdio:['ignore','pipe','pipe']});let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);const timer=setTimeout(()=>child.kill('SIGKILL'),18000);const code=await new Promise(resolve=>child.on('close',resolve));clearTimeout(timer);await new Promise(resolve=>server.close(resolve));
+if(code!==0)throw new Error('Chrome headless falhou: '+err.slice(-1200));
+const body=out.slice(Math.max(0,out.search(/<body[\s>]/i)));
+if(!/(id="ritmoWelcome"|class="auth(?:\s|")|class="auth-card)/.test(body))throw new Error('Boot não renderizou boas-vindas/login. DOM: '+body.slice(0,1400));
+if(/<div class="ritmo-boot-recovery"/.test(body))throw new Error('Boot caiu na recuperação durante smoke test');
+console.log('Smoke de navegador aprovado: interface renderizada em Chrome headless.');
+''')
+pkgp=root/'package.json'
+pkg=json.loads(pkgp.read_text())
+pkg.setdefault('scripts',{})['build']='node build.mjs && node ci-browser-smoke.mjs'
+pkgp.write_text(json.dumps(pkg,ensure_ascii=False,indent=2)+'\n')
 
 # Sanidade do patch final.
 final_app=app.read_text(); final_idx=indexp.read_text(); final_sw=swp.read_text()
