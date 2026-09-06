@@ -55,9 +55,10 @@ jobs:
           python3 .github/scripts/ritmo_v1_debt_av_sync_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_goal_strategy_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_biometric_flow_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_auth_platform_cleanup_patch.py /tmp/ritmo-v1
           node --check /tmp/ritmo-v1/public/app.js
           node --check /tmp/ritmo-v1/_worker.js
-      - name: Separar arquivos de autenticação
+      - name: Relatar autenticação final
         shell: bash
         run: |
           set -euo pipefail
@@ -66,8 +67,31 @@ jobs:
           cp /tmp/ritmo-v1/_worker.js /tmp/ritmo-auth-diagnostic/_worker.js
           cp /tmp/ritmo-v1/public/index.html /tmp/ritmo-auth-diagnostic/index.html
           cp /tmp/ritmo-v1/public/manifest.webmanifest /tmp/ritmo-auth-diagnostic/manifest.webmanifest
-          grep -inE 'turnstile|webauthn|navigator\.credentials|PublicKeyCredential|rpId|residentKey|allowCredentials|authenticatorSelection' /tmp/ritmo-v1/public/app.js /tmp/ritmo-v1/_worker.js > /tmp/ritmo-auth-diagnostic/auth-lines.txt || true
+          python3 - <<'PY' > /tmp/ritmo-auth-diagnostic/checks.txt
+          from pathlib import Path
+          a=Path('/tmp/ritmo-v1/public/app.js').read_text(); w=Path('/tmp/ritmo-v1/_worker.js').read_text(); i=Path('/tmp/ritmo-v1/public/index.html').read_text()
+          checks=[
+            ('label','Desbloqueio do aparelho' in a),
+            ('resident preferred',"residentKey:'preferred'" in w),
+            ('stored transports',"transports:JSON.parse(x.transports||'[]')" in w),
+            ('device state','function ritmoDeviceBioEnabled' in a),
+            ('auth device','function ritmoAuthenticateDevice' in a),
+            ('credentials get','navigator.credentials.get({publicKey:pk})' in a),
+            ('face id','Face ID / Touch ID' in a),
+            ('windows hello','Windows Hello' in a),
+            ('no internal',"transports:['internal']" not in a+w),
+            ('no hints',"hints=['client-device']" not in a),
+            ('no auto prompt','unlockBio(true)' not in a),
+            ('no discouraged',"residentKey:'discouraged'" not in w),
+            ('no prefetch','ritmoPrepareBioChallenge' not in a),
+            ('no turnstile','turnstile' not in (a+w+i).lower()),
+          ]
+          for name,ok in checks: print(('OK   ' if ok else 'FAIL ')+name)
+          if not all(ok for _,ok in checks): raise SystemExit(2)
+          PY
+          cat /tmp/ritmo-auth-diagnostic/checks.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ritmo-v1-auth-diagnostic
           path: /tmp/ritmo-auth-diagnostic
