@@ -1,5 +1,6 @@
 name: Ritmo V1 native resilience publish
 
+# novo código de autorização Cloudflare
 on:
   push:
     branches: [main]
