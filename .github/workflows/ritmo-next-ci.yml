@@ -1,0 +1,58 @@
+name: Ritmo Next architecture CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ritmo-next/**"
+      - ".github/workflows/ritmo-next-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-next-architecture
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ritmo-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Build Vite
+        run: npm run build
+      - name: PWA e offline-first
+        run: |
+          test -s dist/index.html
+          test -s dist/manifest.webmanifest
+          test -s dist/sw.js
+          grep -Fq 'display' dist/manifest.webmanifest
+          grep -Fq "IndexedDB" src/offline/db.ts || true
+          grep -Fq "indexedDB.open" src/offline/db.ts
+          grep -Fq "url.pathname.startsWith('/api/')" public/sw.js
+          ! grep -R "setInterval" src
+      - name: Orçamento de bundle
+        run: |
+          BYTES=$(find dist/assets -type f \( -name '*.js' -o -name '*.css' \) -printf '%s\n' | awk '{s+=$1} END {print s+0}')
+          echo "Bundle JS+CSS: ${BYTES} bytes"
+          test "$BYTES" -le 450000
+      - name: Política de baixo consumo
+        run: |
+          grep -Fq 'ACTIVE_FRESH_MS' src/sync/engine.ts
+          grep -Fq 'PREFETCH_FRESH_MS' src/sync/engine.ts
+          grep -Fq 'MAX_MUTATION_ATTEMPTS' src/sync/engine.ts
+          ! grep -R "poll" src/sync
+          ! grep -R "setInterval" src/sync
+          echo 'Ritmo Next aprovado sem chamadas Cloudflare no CI.'
