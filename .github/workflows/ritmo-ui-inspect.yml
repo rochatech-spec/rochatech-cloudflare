@@ -1,0 +1,36 @@
+name: Ritmo UI inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-ui-inspect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restaurar pacote atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo && mkdir -p /tmp/ritmo
+          cat ritmo-v5/part-* > /tmp/ritmo.b64
+          base64 -d /tmp/ritmo.b64 > /tmp/ritmo.tgz
+          tar -xzf /tmp/ritmo.tgz -C /tmp/ritmo
+      - name: Mostrar trechos relevantes
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=/tmp/ritmo/public/app.js
+          echo '=== CABECALHOS / NOTIF / QUICK ==='
+          grep -n -E -C 3 'notifBell|open-quick|page-actions|page-head|single-fab|quickModal' "$FILE" | head -n 260 || true
+          echo '=== RENDER LISTAS ==='
+          grep -n -E -C 4 'renderIncome|renderExpenses|renderDebts|renderGoals|expenses|incomes|debts|due_date|date:' "$FILE" | head -n 420 || true
+          echo '=== GO / PAGE ==='
+          grep -n -E -C 4 'function go|const go|data-view|table-page|renderPage|currentPage' "$FILE" | head -n 240 || true
