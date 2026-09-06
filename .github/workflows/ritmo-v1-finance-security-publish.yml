@@ -117,8 +117,8 @@ jobs:
           PY
 
           echo '5/8 PWA e experiência nativa'
-          grep -Fq '"display": "standalone"' manifest.webmanifest
-          grep -Fq '"start_url": "/?source=pwa"' manifest.webmanifest
+          grep -Fq '"display": "standalone"' public/manifest.webmanifest
+          grep -Fq '"start_url": "/?source=pwa"' public/manifest.webmanifest
           grep -Fq 'viewport-fit=cover' public/index.html
           grep -Fq 'navigator.storage.persist' public/app.js
           grep -Fq 'ritmoNativeCloudRestore' public/app.js
