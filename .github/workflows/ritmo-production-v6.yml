@@ -1,5 +1,5 @@
-# refresh-auth-2026-09-06-0735
-name: Ritmo production v6 mobile cloud-first
+# refresh-auth-2026-09-06-brand-menu
+name: Ritmo production V1 Rocha Tech
 
 on:
   push:
@@ -29,27 +29,34 @@ jobs:
         with:
           node-version: 22
 
-      - name: Restaurar Ritmo v6
+      - name: Restaurar Ritmo V1
         shell: bash
         run: |
           set -euo pipefail
           rm -rf ritmo-build
           mkdir -p ritmo-build
-          cat ritmo-v6/part-* > /tmp/ritmo-v6.b64
+          cat ritmo-v6/part-* > /tmp/ritmo-v1.b64
           B64_SHA="$(grep '^B64_SHA=' ritmo-v6/HASHES.txt | cut -d= -f2)"
           TGZ_SHA="$(grep '^TGZ_SHA=' ritmo-v6/HASHES.txt | cut -d= -f2)"
-          echo "$B64_SHA  /tmp/ritmo-v6.b64" | sha256sum -c -
-          base64 -d /tmp/ritmo-v6.b64 > /tmp/ritmo-v6.tgz
-          echo "$TGZ_SHA  /tmp/ritmo-v6.tgz" | sha256sum -c -
-          tar -xzf /tmp/ritmo-v6.tgz -C ritmo-build
+          echo "$B64_SHA  /tmp/ritmo-v1.b64" | sha256sum -c -
+          base64 -d /tmp/ritmo-v1.b64 > /tmp/ritmo-v1.tgz
+          echo "$TGZ_SHA  /tmp/ritmo-v1.tgz" | sha256sum -c -
+          tar -xzf /tmp/ritmo-v1.tgz -C ritmo-build
           grep -Fq "Personalizar atalhos" ritmo-build/public/app.js
           grep -Fq "Últimos 7 dias" ritmo-build/public/app.js
           grep -Fq "Últimos 15 dias" ritmo-build/public/app.js
           grep -Fq "Últimos 30 dias" ritmo-build/public/app.js
+          grep -Fq "['more','Menu','menu']" ritmo-build/public/app.js
+          grep -Fq "menu-update-btn" ritmo-build/public/app.js
+          grep -Fq "ritmo-logo.png" ritmo-build/public/app.js
+          grep -Fq "Biometria e chave de acesso" ritmo-build/public/app.js
           grep -Fq "mobile_shortcuts" ritmo-build/_worker.js
           grep -Fq "seen_notifications" ritmo-build/_worker.js
           grep -Fq "user_mobile_settings" ritmo-build/schema.sql
           grep -Fq "120000" ritmo-build/public/app.js
+          test -s ritmo-build/public/ritmo-logo.png
+          test -s ritmo-build/public/ritmo-icon-192.png
+          test -s ritmo-build/public/ritmo-icon-512.png
           ! grep -Fq "ritmo:seen:" ritmo-build/public/app.js
 
       - name: Build
@@ -61,6 +68,9 @@ jobs:
           test -s dist/app.js
           test -s dist/styles.css
           test -s dist/_worker.js
+          test -s dist/ritmo-logo.png
+          test -s dist/ritmo-icon-192.png
+          test -s dist/ritmo-icon-512.png
 
       - name: Iniciar autorização Cloudflare
         id: cfauth
@@ -94,7 +104,7 @@ jobs:
         if: steps.cfauth.outputs.mode == 'device'
         uses: actions/upload-artifact@v4
         with:
-          name: ritmo-cloudflare-authorization-v6
+          name: ritmo-cloudflare-authorization-v1
           path: ritmo-build/cloudflare-device-login.txt
           retention-days: 1
 
@@ -226,21 +236,24 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
 
-      - name: Validar produção v6
+      - name: Validar produção V1
         shell: bash
         run: |
           set -euo pipefail
           BASE="https://ritmo-br.pages.dev"
-          HC=000; PC=000; SC=000; JS=000
+          HC=000; PC=000; SC=000; JS=000; LG=000; I1=000; I5=000
           for i in {1..36}; do
             HC="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?build=$GITHUB_SHA" || true)"
             PC="$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?build=$GITHUB_SHA" || true)"
             SC="$(curl -sS -o /tmp/security.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/security/config?build=$GITHUB_SHA" || true)"
             JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?build=$GITHUB_SHA" || true)"
-            if [ "$HC" = "200" ] && [ "$PC" = "200" ] && [ "$SC" = "200" ] && [ "$JS" = "200" ] && grep -q '"ok":true' /tmp/health.json && grep -Fq 'Personalizar atalhos' /tmp/app.js && grep -Fq 'Últimos 30 dias' /tmp/app.js; then break; fi
+            LG="$(curl -sS -o /tmp/logo.png -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/ritmo-logo.png?build=$GITHUB_SHA" || true)"
+            I1="$(curl -sS -o /tmp/icon192.png -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/ritmo-icon-192.png?build=$GITHUB_SHA" || true)"
+            I5="$(curl -sS -o /tmp/icon512.png -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/ritmo-icon-512.png?build=$GITHUB_SHA" || true)"
+            if [ "$HC" = "200" ] && [ "$PC" = "200" ] && [ "$SC" = "200" ] && [ "$JS" = "200" ] && [ "$LG" = "200" ] && [ "$I1" = "200" ] && [ "$I5" = "200" ] && grep -q '"ok":true' /tmp/health.json && grep -Fq "['more','Menu','menu']" /tmp/app.js && grep -Fq 'menu-update-btn' /tmp/app.js && grep -Fq 'ritmo-logo.png' /tmp/app.js; then break; fi
             sleep 5
           done
-          test "$HC" = "200"; test "$PC" = "200"; test "$SC" = "200"; test "$JS" = "200"
+          test "$HC" = "200"; test "$PC" = "200"; test "$SC" = "200"; test "$JS" = "200"; test "$LG" = "200"; test "$I1" = "200"; test "$I5" = "200"
           grep -q '"db":true' /tmp/health.json
           grep -q '"kv":true' /tmp/health.json
           grep -q '"turnstile":true' /tmp/health.json
@@ -249,5 +262,10 @@ jobs:
           grep -Fq 'Últimos 7 dias' /tmp/app.js
           grep -Fq 'Últimos 15 dias' /tmp/app.js
           grep -Fq 'Últimos 30 dias' /tmp/app.js
+          grep -Fq "['more','Menu','menu']" /tmp/app.js
+          grep -Fq "head('Menu'" /tmp/app.js
+          grep -Fq 'menu-update-btn' /tmp/app.js
+          grep -Fq 'ritmo-logo.png' /tmp/app.js
+          grep -Fq 'Biometria e chave de acesso' /tmp/app.js
           grep -Fq '120000' /tmp/app.js
-          echo "Ritmo v6 validado: $BASE"
+          echo "Ritmo V1 validado: $BASE"
