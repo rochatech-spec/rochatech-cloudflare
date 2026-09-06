@@ -1,0 +1,41 @@
+name: Ritmo V1 brand inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-brand-inspect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruir pacote atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo && mkdir -p /tmp/ritmo
+          cat ritmo-v6/part-* > /tmp/ritmo.b64
+          base64 -d /tmp/ritmo.b64 > /tmp/ritmo.tgz
+          tar -xzf /tmp/ritmo.tgz -C /tmp/ritmo
+      - name: Inspecionar marca e Menu
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== BRAND APP ==='
+          grep -nE -C 3 'function brand|brand\(|brand-mark|brand-name|logo|icon\.svg' /tmp/ritmo/public/app.js || true
+          echo '=== BRAND CSS ==='
+          grep -nEi -C 2 'brand|logo' /tmp/ritmo/public/styles.css || true
+          echo '=== INDEX ==='
+          cat /tmp/ritmo/public/index.html
+          echo '=== MANIFEST ==='
+          cat /tmp/ritmo/public/manifest.webmanifest
+          echo '=== SERVICE WORKER CORE ==='
+          grep -n 'CORE=' /tmp/ritmo/public/sw.js || true
+          echo '=== MENU LABELS ==='
+          grep -nE -C 2 "\['more','Mais'|head\('Mais'|>Mais<" /tmp/ritmo/public/app.js || true
