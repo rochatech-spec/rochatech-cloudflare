@@ -15,10 +15,7 @@ def fn(name,code):
     p,q=bounds(name)
     a=a[:p]+code+a[q:]
 
-# -----------------------------------------------------------------------------
-# Atividade / bloqueio: memória em RAM a cada interação e persistência limitada.
-# Evita setItem + clearTimeout/setTimeout em todo toque/tecla do usuário.
-# -----------------------------------------------------------------------------
+# Atividade/bloqueio: memória em RAM e persistência limitada.
 fn('ritmoMarkUnlocked',r'''let ritmoActivityMemoryAt=0;
 let ritmoActivityPersistAt=0;
 function ritmoMarkUnlocked(){const k=ritmoUnlockKey(),ak=ritmoActivityKey();if(!k)return;const t=Date.now();ritmoActivityMemoryAt=t;ritmoActivityPersistAt=t;try{sessionStorage.setItem(k,'1');sessionStorage.setItem(ak,String(t))}catch{}ritmoScheduleLock()}''')
@@ -27,10 +24,7 @@ fn('ritmoTouchActivity',r'''function ritmoTouchActivity(){if(!state.data||docume
 
 fn('ritmoLastActivity',r'''function ritmoLastActivity(){const ak=ritmoActivityKey();let stored=0;try{stored=Number(sessionStorage.getItem(ak)||0)}catch{}return Math.max(ritmoActivityMemoryAt||0,stored)}''')
 
-# -----------------------------------------------------------------------------
-# Sincronização: a base mantém syncIfNeeded + startSync na mesma linha.
-# O parser seguro substitui apenas syncIfNeeded; startSync é atualizado depois.
-# -----------------------------------------------------------------------------
+# Sincronização econômica.
 fn('syncIfNeeded',r'''let ritmoSyncBusy=false;
 let ritmoLastVersionCheck=0;
 function ritmoSyncDelay(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;return c?.saveData||/2g/.test(String(c?.effectiveType||''))?600000:300000}
@@ -38,38 +32,15 @@ async function syncIfNeeded(showToast=false,force=false){if(!state.data||documen
 
 fn('startSync',r'''function startSync(){clearTimeout(versionPoll);if(!state.data||document.hidden||!navigator.onLine)return;versionPoll=setTimeout(async()=>{await syncIfNeeded(false);startSync()},ritmoSyncDelay())}''')
 
-# -----------------------------------------------------------------------------
-# Retorno ao app: uma única fila ociosa, sem rajada de fetch em focus/pageshow.
-# -----------------------------------------------------------------------------
+# Retorno ao app: uma fila ociosa, sem rajadas de rede.
 fn('ritmoNativeCloudRestore',r'''async function ritmoNativeCloudRestore(force=false){if(!navigator.onLine||ritmoNativeRestoreBusy||document.visibilityState==='hidden'||$('#secureLock'))return false;const t=Date.now();if(!force&&t-ritmoNativeRestoreAt<120000)return false;ritmoNativeRestoreBusy=true;try{if(typeof state==='undefined'||typeof api!=='function')return false;if(state.data?.profile?.id&&typeof syncIfNeeded==='function'){await syncIfNeeded(false,force);ritmoNativeRestoreAt=Date.now();return true}const fresh=await api('/api/bootstrap');if(!fresh?.profile?.id)return false;state.data=fresh;if(state.page!=='shortcuts')state.shortcutDraft=null;if(typeof applyTheme==='function')applyTheme(fresh.settings?.theme||'system');if(typeof renderApp==='function')renderApp(false);ritmoNativeRestoreAt=Date.now();return true}catch{return false}finally{ritmoNativeRestoreBusy=false}}''')
 
 fn('ritmoNativeResume',r'''let ritmoNativeResumeQueued=false;
 function ritmoIdle(task,timeout=900){if('requestIdleCallback'in window)return requestIdleCallback(task,{timeout});return setTimeout(task,Math.min(timeout,180))}
 function ritmoNativeResume(){if(ritmoNativeResumeQueued||document.hidden||$('#secureLock'))return;ritmoNativeResumeQueued=true;ritmoIdle(async()=>{try{await ritmoNativeCloudRestore(false)}finally{ritmoNativeResumeQueued=false}},700)}''')
 
-# -----------------------------------------------------------------------------
-# Desbloqueio: prepara o desafio WebAuthn em paralelo com a pintura da lockscreen.
-# Reutiliza ritmoAutoBioRun já criado pelo patch biométrico final.
-# -----------------------------------------------------------------------------
-fn('showLock',r'''let ritmoBioOptionsPromise=null;
-let ritmoBioPromptBusy=false;
-function ritmoPrepareBioChallenge(){if(!ritmoBioOptionsPromise)ritmoBioOptionsPromise=api('/api/webauthn/auth/options',{method:'POST',body:'{}'}).then(requestOptions).catch(e=>{ritmoBioOptionsPromise=null;throw e});return ritmoBioOptionsPromise}
-function ritmoFinishUnlock(){ritmoMarkUnlocked();document.documentElement.classList.add('ritmo-fast-unlock');renderApp(false);requestAnimationFrame(()=>requestAnimationFrame(()=>document.documentElement.classList.remove('ritmo-fast-unlock')));startSync();ritmoIdle(()=>syncIfNeeded(false,true),900)}
-async function showLock(reason='timeout'){
-  if(!state.data)return;
-  clearTimeout(ritmoLockTimer);state.modal=null;state.profilePop=false;ritmoAutoBioRun=false;ritmoBioPromptBusy=false;ritmoBioOptionsPromise=null;
-  const enabled=Number(state.data.security?.webauthn_count||0)>0,p=state.data.profile;
-  if(enabled)ritmoPrepareBioChallenge().catch(()=>{});
-  root.innerHTML=`<section class="secure-lock premium-lock" id="secureLock"><div class="premium-lock-inner"><div class="premium-lock-brand">${brand()}</div><div class="premium-lock-avatar">${avatarMarkup('premium-lock-avatar-img')}</div><div class="premium-lock-copy"><h2>${reason==='launch'?'Bem-vindo de volta':'Ritmo bloqueado'}</h2><p>${enabled?`Use ${deviceBioLabel()} para continuar.`:'Digite sua senha para continuar.'}</p><span>@${esc(p.username)}</span></div>${enabled?`<button class="btn btn-primary premium-unlock-btn" id="unlockBtn">${ic('shield',18)} ${deviceBioLabel()}</button><button class="premium-password-toggle" id="showPasswordUnlock" type="button">Usar senha</button>`:''}<form id="lockPasswordForm" class="premium-password-form ${enabled?'is-collapsed':''}"><label class="premium-password-field"><span>Senha</span><input name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="Digite sua senha"></label><button class="btn ${enabled?'btn-secondary':'btn-primary'}" type="submit">Desbloquear</button></form><button class="premium-other-account" id="lockLogout" type="button">Usar outra conta</button></div></section>`;
-  $('#unlockBtn')?.addEventListener('click',()=>unlockBio(false));$('#showPasswordUnlock')?.addEventListener('click',()=>{const f=$('#lockPasswordForm');if(!f)return;f.classList.remove('is-collapsed');$('#showPasswordUnlock')?.remove();setTimeout(()=>f.querySelector('input')?.focus(),40)});$('#lockPasswordForm')?.addEventListener('submit',unlockPassword);$('#lockLogout')?.addEventListener('click',logout);
-  if(enabled&&document.visibilityState==='visible')setTimeout(()=>{if($('#secureLock')&&!ritmoAutoBioRun){ritmoAutoBioRun=true;unlockBio(true)}},45)
-}''')
-
-fn('unlockBio',r'''async function unlockBio(auto=false){if(ritmoBioPromptBusy)return;ritmoBioPromptBusy=true;try{const pk=await ritmoPrepareBioChallenge();const cred=await navigator.credentials.get({publicKey:pk});if(!cred)throw new Error('Desbloqueio cancelado.');await api('/api/webauthn/auth/verify',{method:'POST',body:JSON.stringify({credential:credentialToJSON(cred)})});ritmoBioOptionsPromise=null;ritmoFinishUnlock()}catch(e){if(auto&&(e?.name==='NotAllowedError'||e?.name==='AbortError'))return;if(!auto)toast(e.message||'Não foi possível confirmar o desbloqueio deste aparelho.')}finally{ritmoBioPromptBusy=false}}''')
-
-fn('unlockPassword',r'''async function unlockPassword(e){e.preventDefault();const password=new FormData(e.currentTarget).get('password');try{await api('/api/auth/reverify',{method:'POST',body:JSON.stringify({password})});ritmoBioOptionsPromise=null;ritmoFinishUnlock()}catch(err){const input=e.currentTarget.querySelector('input[name="password"]');if(input){input.value='';input.focus()}toast(err.message||'Não foi possível desbloquear.')}}''')
-
-# Perfil de desempenho local: reduz efeitos caros em aparelhos modestos/economia de dados.
+# Importante: desempenho NÃO altera showLock, WebAuthn, Face ID, Touch ID ou Windows Hello.
+# O fluxo de autenticação fica exclusivamente no patch biométrico.
 a += r'''
 function ritmoApplyPerformanceMode(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection,mem=Number(navigator.deviceMemory||8),cores=Number(navigator.hardwareConcurrency||8),reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true,lite=!!c?.saveData||mem<=4||cores<=4||reduced;document.documentElement.dataset.ritmoPerf=lite?'lite':'full'}
 ritmoApplyPerformanceMode();try{(navigator.connection||navigator.mozConnection||navigator.webkitConnection)?.addEventListener?.('change',ritmoApplyPerformanceMode)}catch{}
@@ -100,4 +71,4 @@ html[data-ritmo-perf="lite"] .ritmo-native-sheet,html[data-ritmo-perf="lite"] .w
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
 '''
 cssp.write_text(css)
-print('Ritmo V1: desempenho nativo otimizado, desbloqueio antecipado e sincronização econômica aplicados.')
+print('Ritmo V1: desempenho otimizado sem interferir no fluxo biométrico.')
