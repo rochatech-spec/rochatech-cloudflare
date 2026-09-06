@@ -15,6 +15,17 @@ report_route="if(u.pathname==='/api/wallet/report'){const scope=u.searchParams.g
 if route not in s:raise SystemExit('Rota version não localizada')
 s=s.replace(route,report_route+route,1)
 
+# Home premium: um único seletor, um único hero e espaço real para a tab bar.
+home_marker="overflow('inicio');"
+home_checks="""overflow('inicio');ok(document.querySelectorAll('.finance-profile-switch').length===1,'um seletor de perfil na home');ok(document.querySelectorAll('.finance-profile-card').length===1,'um card principal de perfil');ok(!document.querySelector('.premium-scope-dock'),'sem seletor de contexto duplicado na home');ok(!document.querySelector('.profile-page-intro'),'sem saudacao duplicada');ok(document.querySelectorAll('.premium-flow-card').length===4,'quatro atalhos financeiros compactos');const mainEl=document.querySelector('.main'),bottomEl=document.querySelector('.bottom');if(mainEl&&bottomEl)ok(parseFloat(getComputedStyle(mainEl).paddingBottom)>=bottomEl.getBoundingClientRect().height+10,'conteudo protegido da barra inferior');"""
+if home_marker not in s:raise SystemExit('Ponto inicial da auditoria não encontrado')
+s=s.replace(home_marker,home_checks,1)
+
+old_shared="ok(text('Nosso Ritmo'),'conteudo compartilhado');"
+new_shared="ok(text('Finanças do casal')||text('PERFIL DO CASAL'),'conteudo compartilhado');ok(document.querySelectorAll('.finance-profile-card').length===1,'um perfil do casal');ok(document.querySelectorAll('.finance-profile-switch').length===1,'um seletor no casal');"
+if old_shared not in s:raise SystemExit('Validação antiga do casal não encontrada')
+s=s.replace(old_shared,new_shared,1)
+
 marker="const more=document.querySelector('[data-page=\"more\"]');"
 insert="""await click('[data-page=\"more\"]','menu relatorio');await click('[data-page=\"reports\"]','relatorio');ok(text('Relatório'),'tela relatorio');ok(!/extrato/i.test(root.innerText),'nome somente Relatório');let pdfBtn=document.querySelector('[data-report-pdf]');for(let i=0;i<30&&(!pdfBtn||pdfBtn.disabled);i++){await wait(40);pdfBtn=document.querySelector('[data-report-pdf]')}ok(!!pdfBtn&&!pdfBtn.disabled,'dados do relatorio');let pdfType='',pdfSize=0,downloadClicked=false;const oldCreate=URL.createObjectURL,oldAnchorClick=HTMLAnchorElement.prototype.click;URL.createObjectURL=b=>{pdfType=b?.type||'';pdfSize=Number(b?.size||0);return 'blob:ritmo-ci-pdf'};HTMLAnchorElement.prototype.click=function(){downloadClicked=true};pdfBtn.click();await wait(180);URL.createObjectURL=oldCreate;HTMLAnchorElement.prototype.click=oldAnchorClick;ok(pdfType==='application/pdf'&&pdfSize>700&&downloadClicked,'PDF A4 gerado pelo botão');let rf=document.querySelector('#reportFrom'),rt=document.querySelector('#reportTo');ok(!!rf&&!!rt,'filtro por periodo');rf.value='2026-09-01';rt.value='2026-09-05';document.querySelector('[data-report-apply]')?.click();await wait(220);rf=document.querySelector('#reportFrom');rt=document.querySelector('#reportTo');ok(rf?.value==='2026-09-01'&&rt?.value==='2026-09-05','periodo aplicado');\n"""+marker
 if marker not in s:raise SystemExit('Ponto de auditoria do menu não encontrado')
@@ -22,9 +33,9 @@ s=s.replace(marker,insert,1)
 
 # Regras estruturais adicionais: transferência não pode usar receitas/despesas artificiais.
 head="const appCode=fs.readFileSync(path.join(dist,'app.js'),'utf8'),workerCode=fs.readFileSync(path.join(dist,'_worker.js'),'utf8');"
-extra=head+"\nfor(const m of ['wallet_transactions','transaction_type=\\'transfer\\'','/api/wallet/transfers','walletPersonalBalanceCents'])if(!workerCode.includes(m))throw new Error('Carteira ausente no Worker: '+m);for(const m of ['Destino da entrada','Pagar com','Transferir para o casal','ritmoBuildReportPdf','Gerar PDF','compact-money-row','sharing-space-row'])if(!appCode.includes(m))throw new Error('Carteira/Relatório ausente no app: '+m);const transferBlock=workerCode.slice(workerCode.indexOf(\"if(path==='/api/wallet/transfers'\"),workerCode.indexOf('const transferMatch='));if(/INSERT INTO (?:shared_)?(?:incomes|expenses)/i.test(transferBlock))throw new Error('Transferência implementada como receita/despesa artificial');"
+extra=head+"\nfor(const m of ['wallet_transactions','transaction_type=\\'transfer\\'','/api/wallet/transfers','walletPersonalBalanceCents'])if(!workerCode.includes(m))throw new Error('Carteira ausente no Worker: '+m);for(const m of ['Destino da entrada','Pagar com','Transferir para o casal','ritmoBuildReportPdf','Gerar PDF','compact-money-row','sharing-space-row','finance-profile-card','premium-summary-grid','premium-flow-grid'])if(!appCode.includes(m))throw new Error('Carteira/Relatório/UI premium ausente no app: '+m);const transferBlock=workerCode.slice(workerCode.indexOf(\"if(path==='/api/wallet/transfers'\"),workerCode.indexOf('const transferMatch='));if(/INSERT INTO (?:shared_)?(?:incomes|expenses)/i.test(transferBlock))throw new Error('Transferência implementada como receita/despesa artificial');"
 if head not in s:raise SystemExit('Cabeçalho da auditoria não encontrado')
 s=s.replace(head,extra,1)
 
 p.write_text(s)
-print('Ritmo V1: auditoria de carteiras, período e PDF integrada ao navegador comercial pelo fluxo real do usuário.')
+print('Ritmo V1: auditoria de carteiras, PDF e hierarquia premium integrada ao navegador comercial.')
