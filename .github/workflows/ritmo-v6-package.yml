@@ -1,0 +1,109 @@
+name: Ritmo v6 package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-v6-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ritmo-v6-package
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restaurar versão segura atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-v6
+          mkdir -p /tmp/ritmo-v6
+          cat ritmo-v5/part-* > /tmp/ritmo-v5.b64
+          base64 -d /tmp/ritmo-v5.b64 > /tmp/ritmo-v5.tgz
+          tar -xzf /tmp/ritmo-v5.tgz -C /tmp/ritmo-v6
+
+      - name: Aplicar backend cloud-first
+        run: python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v6
+
+      - name: Aplicar UI, filtros e economia
+        run: python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v6
+
+      - name: Validar sintaxe e regras Rocha Tech
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check /tmp/ritmo-v6/public/app.js
+          node --check /tmp/ritmo-v6/_worker.js
+          grep -Fq "Últimos 7 dias" /tmp/ritmo-v6/public/app.js
+          grep -Fq "Últimos 15 dias" /tmp/ritmo-v6/public/app.js
+          grep -Fq "Últimos 30 dias" /tmp/ritmo-v6/public/app.js
+          grep -Fq "Escolher mês" /tmp/ritmo-v6/public/app.js
+          grep -Fq "Personalizar atalhos" /tmp/ritmo-v6/public/app.js
+          grep -Fq "function morePage" /tmp/ritmo-v6/public/app.js
+          grep -Fq "function shortcutsPage" /tmp/ritmo-v6/public/app.js
+          grep -Fq "mobile_shortcuts" /tmp/ritmo-v6/_worker.js
+          grep -Fq "seen_notifications" /tmp/ritmo-v6/_worker.js
+          grep -Fq "user_mobile_settings" /tmp/ritmo-v6/schema.sql
+          grep -Fq "120000" /tmp/ritmo-v6/public/app.js
+          ! grep -Fq "},8000)" /tmp/ritmo-v6/public/app.js
+          ! grep -Fq "ritmo:seen:" /tmp/ritmo-v6/public/app.js
+          ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v6/public/app.js
+          grep -Fq "const CACHE='ritmo-v2'" /tmp/ritmo-v6/public/sw.js
+          grep -Fq "u.pathname.startsWith('/api/')" /tmp/ritmo-v6/public/sw.js
+          echo '=== localStorage restante (somente cache/UX do dispositivo) ==='
+          grep -n "localStorage" /tmp/ritmo-v6/public/app.js || true
+
+      - name: Build de produção
+        working-directory: /tmp/ritmo-v6
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -s dist/index.html
+          test -s dist/app.js
+          test -s dist/styles.css
+          test -s dist/_worker.js
+          grep -Fq "Personalizar atalhos" dist/app.js
+          grep -Fq "Últimos 30 dias" dist/app.js
+
+      - name: Empacotar versão 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ritmo-v6
+          mkdir -p ritmo-v6
+          tar -C /tmp/ritmo-v6 --exclude=node_modules --exclude=dist -czf /tmp/ritmo-v6.tgz .
+          base64 -w0 /tmp/ritmo-v6.tgz > /tmp/ritmo-v6.b64
+          split -b 6000 -d -a 2 /tmp/ritmo-v6.b64 ritmo-v6/part-
+          B64_SHA="$(sha256sum /tmp/ritmo-v6.b64 | awk '{print $1}')"
+          TGZ_SHA="$(sha256sum /tmp/ritmo-v6.tgz | awk '{print $1}')"
+          printf 'B64_SHA=%s\nTGZ_SHA=%s\n' "$B64_SHA" "$TGZ_SHA" > ritmo-v6/HASHES.txt
+          echo "Bundle: $TGZ_SHA"
+          echo "Base64: $B64_SHA"
+          ls -lh ritmo-v6
+
+      - name: Publicar pacote no repositório
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Rocha Tech CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add ritmo-v6
+          if git diff --cached --quiet; then
+            echo "Pacote já está atualizado."
+            exit 0
+          fi
+          git commit -m "Ritmo v6: mobile completo, filtros e sync econômico"
+          git push origin HEAD:main
