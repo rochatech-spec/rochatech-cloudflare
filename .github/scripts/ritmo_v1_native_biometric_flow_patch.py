@@ -64,11 +64,19 @@ for marker in required_app:
 if '/api/auth/reverify' not in w: raise SystemExit('Preservação de bloqueio ausente: /api/auth/reverify')
 print('Ritmo V1: garantias de bloqueio preservadas após otimização.')
 
-# Último estágio: estabiliza boot/PWA, elimina mistura de cache entre releases,
-# remove a ação de continuar pelo navegador no Android/desktop e instala o smoke
-# real de Chrome no build.
+# Estabiliza boot/PWA, elimina mistura de cache entre releases, remove a ação de
+# continuar pelo navegador no Android/desktop e instala o smoke real de Chrome.
 stability=Path(__file__).with_name('ritmo_v1_boot_install_stability_patch.py')
 if not stability.exists():
  raise SystemExit('Patch de estabilidade de boot não encontrado')
 ns2={'__name__':'__main__','__file__':str(stability)}
 exec(compile(stability.read_text(),str(stability),'exec'),ns2,ns2)
+
+# Etapa final de UX de abertura: sem splash. O login precisa aparecer antes de
+# rede, bootstrap e service worker; sessão existente continua sendo resolvida em
+# segundo plano.
+instant=Path(__file__).with_name('ritmo_v1_instant_login_boot_patch.py')
+if not instant.exists():
+ raise SystemExit('Patch de login imediato não encontrado')
+ns3={'__name__':'__main__','__file__':str(instant)}
+exec(compile(instant.read_text(),str(instant),'exec'),ns3,ns3)
