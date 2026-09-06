@@ -86,3 +86,9 @@ dom_audit=Path(__file__).with_name('ritmo_v1_commercial_dom_audit_patch.py')
 if not dom_audit.exists():raise SystemExit('Auditoria comercial de interface não encontrada')
 ns3={'__name__':'__main__','__file__':str(dom_audit)}
 exec(compile(dom_audit.read_text(),str(dom_audit),'exec'),ns3,ns3)
+
+# Auditoria adicional das carteiras e do PDF, sobre o navegador comercial final.
+wallet_audit=Path(__file__).with_name('ritmo_v1_wallet_report_audit_patch.py')
+if not wallet_audit.exists():raise SystemExit('Auditoria de carteiras/Relatório não encontrada')
+ns4={'__name__':'__main__','__file__':str(wallet_audit)}
+exec(compile(wallet_audit.read_text(),str(wallet_audit),'exec'),ns4,ns4)
