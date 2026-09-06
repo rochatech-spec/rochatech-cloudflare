@@ -1,10 +1,11 @@
 from pathlib import Path
 import sys
+from ritmo_v1_patch_utils import js_function_bounds
+
 root=Path(sys.argv[1]);app=root/'public'/'app.js';worker=root/'_worker.js';a=app.read_text();w=worker.read_text()
+
 def bounds(name):
- s=[a.find(f'function {name}('),a.find(f'async function {name}(')];s=[x for x in s if x>=0]
- if not s: raise SystemExit('Função não encontrada: '+name)
- p=min(s);q=min([x for x in [a.find('\nfunction ',p+1),a.find('\nasync function ',p+1)] if x>=0] or [len(a)]);return p,q
+ return js_function_bounds(a,name)
 def fn(name,code):
  global a;p,q=bounds(name);a=a[:p]+code+a[q:]
 def repa(old,new,label):
@@ -15,11 +16,11 @@ def repw(old,new,label):
  global w
  if old not in w: raise SystemExit('WORKER trecho não encontrado: '+label)
  w=w.replace(old,new,1)
+
 fn('creationOptions',r'''function creationOptions(o){const x={...o,challenge:b64uToBuf(o.challenge),user:{...o.user,id:b64uToBuf(o.user.id)},excludeCredentials:(o.excludeCredentials||[]).map(c=>({...c,id:b64uToBuf(c.id),transports:['internal']})),authenticatorSelection:{...(o.authenticatorSelection||{}),authenticatorAttachment:'platform',residentKey:'discouraged',requireResidentKey:false,userVerification:'required'}};try{x.hints=['client-device']}catch{}return x}''')
 fn('requestOptions',r'''function requestOptions(o){const x={...o,challenge:b64uToBuf(o.challenge),allowCredentials:(o.allowCredentials||[]).map(c=>({...c,id:b64uToBuf(c.id),transports:['internal']})),userVerification:'required'};try{x.hints=['client-device']}catch{}return x}''')
-# As duas funções ficam na mesma linha na base atual; substituir o bloco inteiro evita perder a segunda.
-fn('deviceBioLabel',r'''function deviceBioLabel(){const ua=navigator.userAgent;if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return 'Face ID / Touch ID';if(/Android/i.test(ua))return 'biometria do aparelho';if(/Windows/i.test(ua))return 'Windows Hello';if(/Mac/i.test(ua))return 'Touch ID';return 'desbloqueio do aparelho'}
-function deviceSecurityHint(){const ua=navigator.userAgent;if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return 'Desbloqueie naturalmente com Face ID ou Touch ID deste aparelho.';if(/Android/i.test(ua))return 'Use a digital, rosto ou bloqueio seguro configurado neste aparelho.';if(/Windows/i.test(ua))return 'Use o Windows Hello deste computador.';if(/Mac/i.test(ua))return 'Use o Touch ID ou desbloqueio seguro deste Mac.';return 'Use o desbloqueio seguro deste aparelho.'}''')
+fn('deviceBioLabel',r'''function deviceBioLabel(){const ua=navigator.userAgent;if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return 'Face ID / Touch ID';if(/Android/i.test(ua))return 'biometria do aparelho';if(/Windows/i.test(ua))return 'Windows Hello';if(/Mac/i.test(ua))return 'Touch ID';return 'desbloqueio do aparelho'}''')
+fn('deviceSecurityHint',r'''function deviceSecurityHint(){const ua=navigator.userAgent;if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))return 'Desbloqueie naturalmente com Face ID ou Touch ID deste aparelho.';if(/Android/i.test(ua))return 'Use a digital, rosto ou bloqueio seguro configurado neste aparelho.';if(/Windows/i.test(ua))return 'Use o Windows Hello deste computador.';if(/Mac/i.test(ua))return 'Use o Touch ID ou desbloqueio seguro deste Mac.';return 'Use o desbloqueio seguro deste aparelho.'}''')
 fn('toggleBiometric',r'''async function toggleBiometric(){const enabled=Number(state.data.security?.webauthn_count||0)>0;if(enabled){if(!confirm(`Desativar o desbloqueio deste aparelho para esta conta?`))return;try{await api('/api/webauthn/credentials',{method:'DELETE',body:'{}'});localStorage.removeItem(`${bioKey()}:verified`);state.data=await api('/api/bootstrap');renderApp(false);toast('Desbloqueio do aparelho desativado.')}catch(e){toast(e.message)}return}if(!await platformBioAvailable()){toast('Este aparelho não disponibilizou biometria ou desbloqueio seguro para o Ritmo.');return}try{const options=await api('/api/webauthn/register/options',{method:'POST',body:'{}'}),pk=creationOptions(options);const cred=await navigator.credentials.create({publicKey:pk});await api('/api/webauthn/register/verify',{method:'POST',body:JSON.stringify({credential:credentialToJSON(cred)})});localStorage.setItem(`${bioKey()}:verified`,String(Date.now()));state.data=await api('/api/bootstrap');renderApp(false);toast(`${deviceBioLabel()} ativado neste aparelho.`)}catch(e){toast(e.message||'Não foi possível ativar o desbloqueio deste aparelho.')}}''')
 repa('<strong>Biometria e chave de acesso</strong><small id="bioHint">${deviceSecurityHint()}</small>','<strong>Desbloqueio do aparelho</strong><small id="bioHint">${deviceSecurityHint()}</small>','security label')
 fn('showLock',r'''let ritmoAutoBioRun=false;
@@ -38,8 +39,7 @@ app.write_text(a);worker.write_text(w)
 print('Biometria natural aplicada: autenticador interno, prompt automático e fallback por senha.')
 
 perf=Path(__file__).with_name('ritmo_v1_native_performance_patch.py')
-if not perf.exists():
- raise SystemExit('Patch de desempenho nativo não encontrado')
+if not perf.exists(): raise SystemExit('Patch de desempenho nativo não encontrado')
 ns={'__name__':'__main__','__file__':str(perf)}
 exec(compile(perf.read_text(),str(perf),'exec'),ns,ns)
 
@@ -55,15 +55,18 @@ if '/api/auth/reverify' not in w: raise SystemExit('Preservação de bloqueio au
 print('Ritmo V1: garantias de bloqueio preservadas após otimização.')
 
 stability=Path(__file__).with_name('ritmo_v1_boot_install_stability_patch.py')
-if not stability.exists():
- raise SystemExit('Patch de estabilidade de boot não encontrado')
+if not stability.exists(): raise SystemExit('Patch de estabilidade de boot não encontrado')
 ns2={'__name__':'__main__','__file__':str(stability)}
 exec(compile(stability.read_text(),str(stability),'exec'),ns2,ns2)
 
-instant=Path(__file__).with_name('ritmo_v1_instant_login_boot_patch.py')
-if not instant.exists():
- raise SystemExit('Patch de login imediato não encontrado')
-ns3={'__name__':'__main__','__file__':str(instant)}
-exec(compile(instant.read_text(),str(instant),'exec'),ns3,ns3)
+boot=Path(__file__).with_name('ritmo_v1_boot_flow_patch.py')
+if not boot.exists(): raise SystemExit('Patch de fluxo único de boot não encontrado')
+ns3={'__name__':'__main__','__file__':str(boot)}
+exec(compile(boot.read_text(),str(boot),'exec'),ns3,ns3)
 
-# Reexecução: login imediato sem splash.
+# Invariantes finais: nada de splash e exatamente um boot.
+final=app.read_text()
+if final.count('async function ritmoBoot()')!=1: raise SystemExit('Quantidade inválida de boots finais')
+if 'ritmo-instant-login-boot' in final: raise SystemExit('Remendo de boot antigo ainda presente')
+if 'Abrindo com segurança' in final: raise SystemExit('Splash antigo ainda presente')
+print('Ritmo V1: boot final consolidado sem splash e sem recortes destrutivos.')
