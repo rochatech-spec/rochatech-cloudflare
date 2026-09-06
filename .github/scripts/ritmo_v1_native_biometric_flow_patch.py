@@ -44,4 +44,22 @@ if not perf.exists():
  raise SystemExit('Patch de desempenho nativo não encontrado')
 ns={'__name__':'__main__','__file__':str(perf)}
 exec(compile(perf.read_text(),str(perf),'exec'),ns,ns)
-# revisão de desempenho 3
+
+# O otimizador não pode remover garantias do bloqueio. A rotina abaixo restaura
+# somente o listener de visibilidade se algum recorte de função o tiver consumido.
+a=app.read_text();w=worker.read_text()
+visibility_marker='document.hidden)clearTimeout(ritmoLockTimer)'
+if visibility_marker not in a:
+ a += "\ndocument.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(ritmoLockTimer);else maybeLock(false)});\n"
+ app.write_text(a)
+required_app=[
+ "sessionStorage.getItem(k)==='1'",
+ 'function ritmoRenderAppCore',
+ visibility_marker,
+ 'Manter conta salva neste aparelho',
+ 'class="secure-lock premium-lock"'
+]
+for marker in required_app:
+ if marker not in app.read_text(): raise SystemExit('Preservação de bloqueio ausente: '+marker)
+if '/api/auth/reverify' not in w: raise SystemExit('Preservação de bloqueio ausente: /api/auth/reverify')
+print('Ritmo V1: garantias de bloqueio preservadas após otimização.')
