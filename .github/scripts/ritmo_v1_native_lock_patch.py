@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from ritmo_v1_patch_utils import js_function_bounds
 
 root=Path(sys.argv[1])
 app=root/'public'/'app.js'
@@ -8,14 +9,7 @@ cssp=root/'public'/'styles.css'
 a=app.read_text(); w=worker.read_text()
 
 def bounds(name):
-    starts=[a.find(f'function {name}('),a.find(f'async function {name}(')]
-    starts=[x for x in starts if x>=0]
-    if not starts: raise SystemExit(f'Função não encontrada: {name}')
-    p=min(starts); ends=[]
-    for token in ['\nfunction ','\nasync function ']:
-        q=a.find(token,p+1)
-        if q>p: ends.append(q)
-    return p,(min(ends) if ends else len(a))
+    return js_function_bounds(a,name)
 
 def replace_func(name,code):
     global a
