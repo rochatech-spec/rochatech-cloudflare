@@ -1,24 +1,14 @@
 from pathlib import Path
 import sys
+from ritmo_v1_patch_utils import js_function_bounds
 
 root=Path(sys.argv[1])
 app=root/'public'/'app.js'
 cssp=root/'public'/'styles.css'
 a=app.read_text()
 
-
 def bounds(name):
-    starts=[a.find(f'function {name}('),a.find(f'async function {name}(')]
-    starts=[x for x in starts if x>=0]
-    if not starts:
-        raise SystemExit('Função não encontrada: '+name)
-    p=min(starts)
-    ends=[]
-    for token in ['\nfunction ','\nasync function ']:
-        q=a.find(token,p+1)
-        if q>p: ends.append(q)
-    return p,(min(ends) if ends else len(a))
-
+    return js_function_bounds(a,name)
 
 def fn(name,code):
     global a
@@ -39,13 +29,14 @@ fn('ritmoLastActivity',r'''function ritmoLastActivity(){const ak=ritmoActivityKe
 
 # -----------------------------------------------------------------------------
 # Sincronização: a base mantém syncIfNeeded + startSync na mesma linha.
-# Substituímos o bloco inteiro para preservar ambas e reduzir chamadas de rede.
+# O parser seguro substitui apenas syncIfNeeded; startSync é atualizado depois.
 # -----------------------------------------------------------------------------
 fn('syncIfNeeded',r'''let ritmoSyncBusy=false;
 let ritmoLastVersionCheck=0;
 function ritmoSyncDelay(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;return c?.saveData||/2g/.test(String(c?.effectiveType||''))?600000:300000}
-async function syncIfNeeded(showToast=false,force=false){if(!state.data||document.hidden||!navigator.onLine||$('#secureLock')||ritmoSyncBusy)return false;const t=Date.now();if(!force&&t-ritmoLastVersionCheck<60000)return false;ritmoSyncBusy=true;ritmoLastVersionCheck=t;try{const v=await api('/api/version');if(Number(v.version)!==Number(state.data.profile.data_version)){const fresh=await api('/api/bootstrap');state.data=fresh;applyTheme(fresh.settings?.theme||'system');renderApp(false);if(showToast)toast('Ritmo sincronizado.');return true}return false}catch{return false}finally{ritmoSyncBusy=false}}
-function startSync(){clearTimeout(versionPoll);if(!state.data||document.hidden||!navigator.onLine)return;versionPoll=setTimeout(async()=>{await syncIfNeeded(false);startSync()},ritmoSyncDelay())}''')
+async function syncIfNeeded(showToast=false,force=false){if(!state.data||document.hidden||!navigator.onLine||$('#secureLock')||ritmoSyncBusy)return false;const t=Date.now();if(!force&&t-ritmoLastVersionCheck<60000)return false;ritmoSyncBusy=true;ritmoLastVersionCheck=t;try{const v=await api('/api/version');if(Number(v.version)!==Number(state.data.profile.data_version)){const fresh=await api('/api/bootstrap');state.data=fresh;applyTheme(fresh.settings?.theme||'system');renderApp(false);if(showToast)toast('Ritmo sincronizado.');return true}return false}catch{return false}finally{ritmoSyncBusy=false}}''')
+
+fn('startSync',r'''function startSync(){clearTimeout(versionPoll);if(!state.data||document.hidden||!navigator.onLine)return;versionPoll=setTimeout(async()=>{await syncIfNeeded(false);startSync()},ritmoSyncDelay())}''')
 
 # -----------------------------------------------------------------------------
 # Retorno ao app: uma única fila ociosa, sem rajada de fetch em focus/pageshow.
