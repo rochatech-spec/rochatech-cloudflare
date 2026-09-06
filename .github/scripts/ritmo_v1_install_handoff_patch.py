@@ -70,3 +70,5 @@ css += r'''
 '''
 cssp.write_text(css)
 print('Ritmo V1: instalação concluída direciona o uso para o PWA instalado, sem entrar no Menu pelo navegador.')
+
+# Reexecução solicitada para gerar nova autorização Cloudflare.
