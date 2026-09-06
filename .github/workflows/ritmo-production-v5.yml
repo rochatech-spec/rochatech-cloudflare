@@ -1,0 +1,200 @@
+name: Ritmo production v5 Rocha Tech URL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ritmo-v5/**"
+      - ".github/workflows/ritmo-production-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-production-v5
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restaurar Ritmo v5
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ritmo-build
+          mkdir -p ritmo-build
+          cat ritmo-v5/part-* > /tmp/ritmo-v5.b64
+          echo "6005c8037ca3f5833a6f379593c59aced1f41938cb95a718788ab3a6135fac6f  /tmp/ritmo-v5.b64" | sha256sum -c -
+          base64 -d /tmp/ritmo-v5.b64 > /tmp/ritmo-v5.tgz
+          echo "94ffe31778a4e17295b3b06909ee5580f64426c8fc891704e0af6babc51b6d9c  /tmp/ritmo-v5.tgz" | sha256sum -c -
+          tar -xzf /tmp/ritmo-v5.tgz -C ritmo-build
+          grep -Fq 'mobileProfileBtn' ritmo-build/public/app.js
+          grep -Fq 'Nova senha' ritmo-build/public/app.js
+          ! grep -Fq "['privacy','Privacidade'" ritmo-build/public/app.js
+          grep -Fq "password_hash=?,password_salt=?" ritmo-build/_worker.js
+
+      - name: Build
+        working-directory: ritmo-build
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -s dist/index.html
+          test -s dist/app.js
+          test -s dist/styles.css
+          test -s dist/_worker.js
+
+      - name: Iniciar autorização Cloudflare
+        id: cfauth
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/ritmo-build/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/ritmo-build/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          (
+            unset RUNNER_TRACKING_ID
+            nohup npx --yes wrangler@latest login --device --browser=false > "$LOG" 2>&1 &
+            echo $! > "$PID"
+          )
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then
+              cat "$LOG"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Disponibilizar autorização
+        if: steps.cfauth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-cloudflare-authorization-v5
+          path: ritmo-build/cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização
+        if: steps.cfauth.outputs.mode == 'device'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PID="$GITHUB_WORKSPACE/ritmo-build/cloudflare-device-login.pid"
+          P="$(cat "$PID")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then exit 0; fi
+            if ! kill -0 "$P" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Descobrir conta
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Garantir projeto ritmo-br
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIST="$(npx --yes wrangler@latest pages project list 2>&1)"
+          echo "$LIST"
+          if echo "$LIST" | grep -Eq '(^|[[:space:]])ritmo-br([[:space:]]|$)'; then
+            echo "Projeto ritmo-br já existe."
+          else
+            npx --yes wrangler@latest pages project create ritmo-br --production-branch main
+          fi
+
+      - name: Configurar D1
+        working-directory: ritmo-build
+        shell: bash
+        run: |
+          cat > wrangler.toml <<'EOF'
+          name = "ritmo-br"
+          compatibility_date = "2026-09-05"
+          pages_build_output_dir = "./dist"
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "ritmo-db"
+          database_id = "17baeadd-2140-4cf6-ad5b-0aa0390d1d16"
+
+          [vars]
+          APP_NAME = "Ritmo"
+          APP_URL = "https://ritmo-br.pages.dev"
+          EOF
+
+      - name: Aplicar schema
+        working-directory: ritmo-build
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest d1 execute ritmo-db --remote --file ./schema.sql
+
+      - name: Publicar ritmo-br
+        working-directory: ritmo-build
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Validar produção e perfil
+        working-directory: ritmo-build
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://ritmo-br.pages.dev"
+          for i in {1..36}; do
+            HC="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?build=$GITHUB_SHA" || true)"
+            PC="$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?build=$GITHUB_SHA" || true)"
+            if [ "$HC" = "200" ] && [ "$PC" = "200" ] && grep -q '"ok":true' /tmp/health.json && grep -q '<title>Ritmo</title>' /tmp/index.html; then break; fi
+            sleep 5
+          done
+          test "$HC" = "200"
+          test "$PC" = "200"
+          grep -q '"db":true' /tmp/health.json
+
+          U="rtprofile$(date +%s)$RANDOM"
+          U2="${U}x"
+          P1='RitmoTeste#2026'
+          P2='RitmoNovo#2026'
+          cleanup(){ npx --yes wrangler@latest d1 execute ritmo-db --remote --command "DELETE FROM users WHERE username_norm='${U2}'; DELETE FROM users WHERE username_norm='${U}';" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          curl -fsS -c /tmp/rtcookies -H "Origin: $BASE" -H 'content-type: application/json' \
+            --data "{\"name\":\"Teste Ritmo\",\"username\":\"$U\",\"password\":\"$P1\"}" \
+            "$BASE/api/auth/register" | grep -q '"ok":true'
+
+          curl -fsS -b /tmp/rtcookies -c /tmp/rtcookies -X PATCH -H "Origin: $BASE" -H 'content-type: application/json' \
+            --data "{\"name\":\"Perfil Atualizado\",\"username\":\"$U2\",\"password\":\"$P2\"}" \
+            "$BASE/api/profile" | grep -q '"ok":true'
+
+          curl -fsS -b /tmp/rtcookies -H "Origin: $BASE" -H 'content-type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+          curl -fsS -c /tmp/rtcookies2 -H "Origin: $BASE" -H 'content-type: application/json' \
+            --data "{\"username\":\"$U2\",\"password\":\"$P2\"}" \
+            "$BASE/api/auth/login" | grep -q '"ok":true'
+          curl -fsS -b /tmp/rtcookies2 "$BASE/api/bootstrap" > /tmp/bootstrap.json
+          grep -q '"name":"Perfil Atualizado"' /tmp/bootstrap.json
+          grep -q "\"username\":\"$U2\"" /tmp/bootstrap.json
+          echo "Ritmo validado: $BASE"
