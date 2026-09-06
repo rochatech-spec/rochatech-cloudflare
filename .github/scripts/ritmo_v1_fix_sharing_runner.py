@@ -1,7 +1,6 @@
 from pathlib import Path
-import re
 
-# Ajusta o gerador de Compartilhamento antes de aplicá-lo ao fonte reconstruído.
+# Ajusta os geradores antes de aplicá-los ao fonte reconstruído.
 p=Path('.github/scripts/ritmo_v1_sharing_patch.py')
 s=p.read_text()
 
@@ -25,8 +24,7 @@ new_func="""def areplace_func(name,next_name,new_code):
 if old_func in s:
     s=s.replace(old_func,new_func,1)
 
-# Substitui a definição complexa do formulário de Meta por um bloco equivalente,
-# porém sem templates aninhados que possam quebrar o JavaScript.
+# Formulário de Meta: mesma função, mas sem templates JavaScript aninhados.
 goal_old=s.find("old=\"if(type==='goal')")
 goal_apply=s.find("\narep(old,new,'tipo meta')",goal_old)
 if goal_old<0 or goal_apply<0:
@@ -34,7 +32,8 @@ if goal_old<0 or goal_apply<0:
 new_line=s.find('\nnew=',goal_old)
 if new_line<0 or new_line>goal_apply:
     raise SystemExit('Bloco new da meta não encontrado.')
-safe_new=r'''new=r'''if(type==='goal'){
+
+safe_new="""new=r'''if(type==='goal'){
   title=item?'Editar meta':'Nova meta';
   let mode='';
   if(item){
@@ -46,11 +45,10 @@ safe_new=r'''new=r'''if(type==='goal'){
     mode='<input type="hidden" name="goal_scope" value="personal"><div class="goal-mode-readonly full"><div><strong>Meta individual</strong><small>Conecte um parceiro em Compartilhamento para criar metas juntos.</small></div></div>';
   }
   fields=mode+input('name','Nome da meta',item?.name,'Ex.: Viagem')+moneyInput('target_amount','Valor alvo',item?.target_amount)+select('category','Categoria',['Viagem','Carro','Casa','Estudos','Reserva de emergência','Personalizado'],item?.category)+dateInput('deadline','Prazo',item?.deadline||'')+input('notes','Observação',item?.notes,'Opcional','full');
-}'''
-'''
+}'''"""
 s=s[:new_line+1]+safe_new+s[goal_apply:]
 
-# A Meta deve ser trocada apenas dentro de modalHtml.
+# Alterar Meta somente dentro de modalHtml.
 s=s.replace("arep(old,new,'tipo meta')",'''_modal=a.find('function modalHtml(){')
 if _modal<0: raise SystemExit('APP modalHtml não encontrado')
 p=a.find("if(type==='goal'){",_modal)
@@ -60,21 +58,20 @@ a=a[:p]+new+a[q:]''',1)
 
 # goalCard: trocar somente até a próxima função real.
 unsafe="areplace_func('goalCard','updateSystemNow',goal_card)"
-safe=r'''import re as _re
+safe="""import re as _re
 _gp=a.find('function goalCard(')
 if _gp<0: raise SystemExit('APP goalCard não encontrado')
-_gm=_re.search(r'\n(?:async\s+)?function\s+[A-Za-z0-9_]+\s*\(',a[_gp+1:])
+_gm=_re.search(r'\\n(?:async\\s+)?function\\s+[A-Za-z0-9_]+\\s*\\(',a[_gp+1:])
 if not _gm: raise SystemExit('APP próxima função após goalCard não encontrada')
 _gq=_gp+1+_gm.start()
-a=a[:_gp]+goal_card+a[_gq:]'''
+a=a[:_gp]+goal_card+a[_gq:]"""
 if unsafe in s:
     s=s.replace(unsafe,safe,1)
 elif safe not in s:
     raise SystemExit('Troca segura de goalCard não encontrada.')
-
 p.write_text(s)
 
-# Organização iOS: localizar funções pelo nome mesmo após pequenas alterações.
+# Organização iOS: assinatura flexível entre funções.
 p_ios=Path('.github/scripts/ritmo_v1_ios_organization_patch.py')
 i=p_ios.read_text()
 old_ios="""def replace_between(start_marker,end_marker,new_text,label):
