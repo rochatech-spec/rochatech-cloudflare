@@ -2,7 +2,7 @@ name: Ritmo Next architecture CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, ritmo-next-migration]
     paths:
       - "ritmo-next/**"
       - ".github/workflows/ritmo-next-ci.yml"
@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ritmo-next-architecture
+  group: ritmo-next-architecture-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     defaults:
       run:
         working-directory: ritmo-next
@@ -33,15 +33,28 @@ jobs:
         run: npm run typecheck
       - name: Build Vite
         run: npm run build
+      - name: Paridade funcional essencial
+        run: |
+          grep -Fq 'Destino da entrada' src/components/FinancialSheet.tsx
+          grep -Fq 'Pagar com' src/components/FinancialSheet.tsx
+          grep -Fq 'Transferir para o casal' src/pages/SharingPage.tsx
+          grep -Fq 'Haver' src/components/FinancialSheet.tsx
+          grep -Fq 'Relatório' src/pages/ReportPage.tsx
+          grep -Fq 'Gerar PDF' src/pages/ReportPage.tsx
+          grep -Fq '/api/wallet/transfers' src/App.tsx
+          grep -Fq '/api/auth/login' src/api/client.ts
+          grep -Fq '/api/webauthn' src/security/passkeys.ts
+          grep -Fq 'ProfileSwitcher' src/App.tsx
+          ! grep -R -i "extrato" src
       - name: PWA e offline-first
         run: |
           test -s dist/index.html
           test -s dist/manifest.webmanifest
           test -s dist/sw.js
           grep -Fq 'display' dist/manifest.webmanifest
-          grep -Fq "IndexedDB" src/offline/db.ts || true
-          grep -Fq "indexedDB.open" src/offline/db.ts
+          grep -Fq 'indexedDB.open' src/offline/db.ts
           grep -Fq "url.pathname.startsWith('/api/')" public/sw.js
+          grep -Fq 'clearFinancialCache' src/offline/db.ts
           ! grep -R "setInterval" src
       - name: Orçamento de bundle
         run: |
@@ -55,4 +68,5 @@ jobs:
           grep -Fq 'MAX_MUTATION_ATTEMPTS' src/sync/engine.ts
           ! grep -R "poll" src/sync
           ! grep -R "setInterval" src/sync
+          ! grep -R "fetch('/api/version" src
           echo 'Ritmo Next aprovado sem chamadas Cloudflare no CI.'
