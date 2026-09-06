@@ -58,10 +58,9 @@ function ritmoNativeResume(){if(ritmoNativeResumeQueued||document.hidden||$('#se
 
 # -----------------------------------------------------------------------------
 # Desbloqueio: prepara o desafio WebAuthn em paralelo com a pintura da lockscreen.
-# Remove atraso artificial e evita duas solicitações concorrentes de biometria.
+# Reutiliza ritmoAutoBioRun já criado pelo patch biométrico final.
 # -----------------------------------------------------------------------------
-fn('showLock',r'''let ritmoAutoBioRun=false;
-let ritmoBioOptionsPromise=null;
+fn('showLock',r'''let ritmoBioOptionsPromise=null;
 let ritmoBioPromptBusy=false;
 function ritmoPrepareBioChallenge(){if(!ritmoBioOptionsPromise)ritmoBioOptionsPromise=api('/api/webauthn/auth/options',{method:'POST',body:'{}'}).then(requestOptions).catch(e=>{ritmoBioOptionsPromise=null;throw e});return ritmoBioOptionsPromise}
 function ritmoFinishUnlock(){ritmoMarkUnlocked();document.documentElement.classList.add('ritmo-fast-unlock');renderApp(false);requestAnimationFrame(()=>requestAnimationFrame(()=>document.documentElement.classList.remove('ritmo-fast-unlock')));startSync();ritmoIdle(()=>syncIfNeeded(false,true),900)}
