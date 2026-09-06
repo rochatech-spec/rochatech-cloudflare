@@ -9,6 +9,7 @@ on:
       - ".github/scripts/ritmo_v1_update_patch.py"
       - ".github/scripts/ritmo_v1_device_security_ux.py"
       - ".github/scripts/ritmo_v1_brand_menu_patch.py"
+      - ".github/scripts/ritmo_v1_sharing_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -57,6 +58,9 @@ jobs:
       - name: Aplicar identidade oficial e Menu
         run: python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
 
+      - name: Aplicar Compartilhamento a dois
+        run: python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+
       - name: Validar sintaxe e regras Rocha Tech
         shell: bash
         run: |
@@ -104,9 +108,38 @@ jobs:
           test -s /tmp/ritmo-v1/public/ritmo-logo.png
           test -s /tmp/ritmo-v1/public/ritmo-icon-192.png
           test -s /tmp/ritmo-v1/public/ritmo-icon-512.png
+
+          # Compartilhamento: schema, rotas, permissões e UX.
+          grep -Fq "CREATE TABLE IF NOT EXISTS partnerships" /tmp/ritmo-v1/schema.sql
+          grep -Fq "CREATE TABLE IF NOT EXISTS shared_goals" /tmp/ritmo-v1/schema.sql
+          grep -Fq "CREATE TABLE IF NOT EXISTS shared_goal_contributions" /tmp/ritmo-v1/schema.sql
+          grep -Fq "partnership_members" /tmp/ritmo-v1/_worker.js
+          grep -Fq "/api/sharing/invite" /tmp/ritmo-v1/_worker.js
+          grep -Fq "/api/sharing/accept-code" /tmp/ritmo-v1/_worker.js
+          grep -Fq "/api/sharing/scope" /tmp/ritmo-v1/_worker.js
+          grep -Fq "/api/shared" /tmp/ritmo-v1/_worker.js
+          grep -Fq "bumpPartnership" /tmp/ritmo-v1/_worker.js
+          grep -Fq "Compartilhamento" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Meu Ritmo" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Nosso Ritmo" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Individual" /tmp/ritmo-v1/public/app.js
+          grep -Fq "Juntos" /tmp/ritmo-v1/public/app.js
+          grep -Fq "goal_scope" /tmp/ritmo-v1/public/app.js
+          grep -Fq "sharing:['sharing','Compartilhar','users']" /tmp/ritmo-v1/public/app.js
+          grep -Fq "'sharing'" /tmp/ritmo-v1/_worker.js
+
+          # Persistência importante continua fora do localStorage.
           ! grep -Fq "},8000)" /tmp/ritmo-v1/public/app.js
           ! grep -Fq "ritmo:seen:" /tmp/ritmo-v1/public/app.js
-          ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v1/public/app.js
+          ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications|localStorage\.(setItem|getItem).*partnership|localStorage\.(setItem|getItem).*view_scope" /tmp/ritmo-v1/public/app.js
+
+      - name: Validar schema localmente
+        shell: bash
+        run: |
+          set -euo pipefail
+          sqlite3 /tmp/ritmo-schema-test.db < /tmp/ritmo-v1/schema.sql
+          sqlite3 /tmp/ritmo-schema-test.db ".tables" | grep -Fq "partnerships"
+          sqlite3 /tmp/ritmo-schema-test.db ".tables" | grep -Fq "shared_goals"
 
       - name: Build de produção
         working-directory: /tmp/ritmo-v1
@@ -132,6 +165,10 @@ jobs:
           grep -Fq "Samsung Pass" dist/app.js
           grep -Fq "ritmo-logo.png" dist/app.js
           grep -Fq "ritmo-shell-v1-current" dist/sw.js
+          grep -Fq "Nosso Ritmo" dist/app.js
+          grep -Fq "goal_scope" dist/app.js
+          grep -Fq "/api/shared" dist/_worker.js
+          grep -Fq "partnership_members" dist/_worker.js
 
       - name: Empacotar Versão 1
         shell: bash
@@ -157,5 +194,5 @@ jobs:
             echo "Pacote já está atualizado."
             exit 0
           fi
-          git commit -m "Ritmo V1: identidade oficial e Menu"
+          git commit -m "Ritmo V1: compartilhamento a dois"
           git push origin HEAD:main
