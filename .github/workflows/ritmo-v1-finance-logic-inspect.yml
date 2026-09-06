@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Preparar processamento visual
+        run: python3 -m pip install --quiet pillow
       - name: Montar Ritmo atual
         shell: bash
         run: |
@@ -49,26 +51,27 @@ jobs:
           app=Path('/tmp/ritmo-v1/public/app.js').read_text()
           worker=Path('/tmp/ritmo-v1/_worker.js').read_text()
           schema=Path('/tmp/ritmo-v1/schema.sql').read_text()
-          def func(src,name,next_hint=None):
-              starts=[f'function {name}(',f'async function {name}(']
-              p=max(src.find(x) for x in starts)
-              if p<0:
+          def func(src,name):
+              starts=[src.find(f'function {name}('),src.find(f'async function {name}(')]
+              starts=[x for x in starts if x>=0]
+              if not starts:
                   print(f'\n=== {name}: NAO ENCONTRADA ===');return
-              candidates=[]
+              p=min(starts);c=[]
               for token in ['\nfunction ','\nasync function ']:
                   q=src.find(token,p+1)
-                  if q>p:candidates.append(q)
-              q=min(candidates) if candidates else min(len(src),p+6000)
-              print(f'\n=== FUNC {name} ===\n'+src[p:q][:7000])
+                  if q>p:c.append(q)
+              q=min(c) if c else min(len(src),p+9000)
+              print(f'\n=== FUNC {name} ===\n'+src[p:q][:9000])
           for n in ['currentStats','homePage','itemMoney','modalHtml','calendarPage','insightsPage','notifications']:
               func(app,n)
           print('\n=== SCHEMA INCOMES/EXPENSES/DEBTS ===')
-          for table in ['incomes','expenses','debts','debt_events']:
-              p=schema.find(f'CREATE TABLE IF NOT EXISTS {table}')
-              if p<0:p=schema.find(f'CREATE TABLE {table}')
-              if p>=0: print(schema[p:schema.find(';',p)+1])
-          print('\n=== WORKER INCOME ROUTES ===')
-          for needle in ["path==='/api/income'","path==='/api/shared/income'","/api/incomes","shared_incomes","INSERT INTO incomes","UPDATE incomes"]:
+          for table in ['incomes','expenses','debts','debt_events','shared_incomes','shared_expenses','shared_debts','shared_debt_events']:
+              for prefix in [f'CREATE TABLE IF NOT EXISTS {table}',f'CREATE TABLE {table}']:
+                  p=schema.find(prefix)
+                  if p>=0:
+                      print('\n---',table,'---\n',schema[p:schema.find(';',p)+1]);break
+          print('\n=== WORKER FINANCE ROUTES ===')
+          for needle in ["path==='/api/income'","path==='/api/shared/income'","INSERT INTO incomes","UPDATE incomes","INSERT INTO shared_incomes","UPDATE shared_incomes","INSERT INTO expenses","UPDATE expenses","INSERT INTO shared_expenses","UPDATE shared_expenses"]:
               p=worker.find(needle)
-              if p>=0: print('\n---',needle,'---\n',worker[max(0,p-1200):p+4200])
+              if p>=0: print('\n---',needle,'---\n',worker[max(0,p-1500):p+5500])
           PY
