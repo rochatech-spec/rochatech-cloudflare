@@ -81,10 +81,10 @@ if old in a:
 a=a.replace('<strong>Bloqueio automático</strong><small>Solicitar desbloqueio após inatividade</small>','<strong>Bloqueio automático</strong><small>Em segundo plano, só bloqueia quando o tempo escolhido for atingido</small>',1)
 a=a.replace('<strong>Sessão protegida</strong><small>Vinculada ao ID interno da conta, sem depender do nome de usuário.</small>','<strong>Abertura protegida</strong><small>Ao fechar e abrir novamente o Ritmo, um novo desbloqueio é solicitado.</small>',1)
 
-# Listener de visibilidade: não bloqueia ao simplesmente ir para segundo plano.
-old="document.addEventListener('visibilitychange',()=>{if(!document.hidden){maybeLock();syncIfNeeded(false)}});window.addEventListener('online',()=>syncIfNeeded(false));"
-if old not in a: raise SystemExit('Listener de visibilidade não encontrado')
-a=a.replace(old,"document.addEventListener('visibilitychange',()=>{if(!document.hidden){maybeLock(false);syncIfNeeded(false)}else{clearTimeout(ritmoLockTimer)}});window.addEventListener('online',()=>syncIfNeeded(false));['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,ritmoTouchActivity,{passive:true}));",1)
+# O listener antigo pode ter sido enriquecido por outras camadas. Não o
+# substituímos: a nova maybeLock() já respeita segundo plano e tempo. Apenas
+# registramos atividade real do usuário e cancelamos o timer enquanto oculto.
+a += "\n['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,ritmoTouchActivity,{passive:true}));document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(ritmoLockTimer);else ritmoScheduleLock()});\n"
 
 # Boot: antes havia renderização dos menus e só depois o bloqueio. Agora a
 # verificação ocorre antes de renderizar qualquer tela privada.
