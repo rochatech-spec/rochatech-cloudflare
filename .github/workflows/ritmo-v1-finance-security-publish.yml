@@ -8,6 +8,7 @@ on:
       - ".github/workflows/ritmo-v1-finance-security-publish.yml"
       - ".github/scripts/ritmo_v1_financial_intelligence_patch.py"
       - ".github/scripts/ritmo_v1_native_lock_patch.py"
+      - ".github/scripts/ritmo_v1_native_sheet_motion_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -59,19 +60,20 @@ jobs:
           python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_financial_intelligence_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_lock_patch.py /tmp/ritmo-v1
-      - name: Bateria de regressão e regras financeiras
+          python3 .github/scripts/ritmo_v1_native_sheet_motion_patch.py /tmp/ritmo-v1
+      - name: Bateria de regressão, finanças e interface nativa
         working-directory: /tmp/ritmo-v1
         shell: bash
         run: |
           set -euo pipefail
-          echo '1/8 Sintaxe JS e schema'
+          echo '1/9 Sintaxe JS e schema'
           node --check public/app.js
           node --check _worker.js
           node --check public/sw.js
           rm -f /tmp/ritmo-test.db
           sqlite3 /tmp/ritmo-test.db < schema.sql
 
-          echo '2/8 Inteligência financeira'
+          echo '2/9 Inteligência financeira'
           grep -Fq "function incomeIsRealized" public/app.js
           grep -Fq "realizedIn=d.incomes.filter(incomeIsRealized)" public/app.js
           grep -Fq "futureIn=d.incomes.filter" public/app.js
@@ -97,7 +99,7 @@ jobs:
           console.log('Regra realizado/previsto OK');
           NODE
 
-          echo '3/8 Bloqueio e revalidação'
+          echo '3/9 Bloqueio e revalidação'
           grep -Fq "/api/auth/reverify" _worker.js
           grep -Fq "sessionStorage.getItem(k)==='1'" public/app.js
           grep -Fq "function ritmoRenderAppCore" public/app.js
@@ -107,7 +109,7 @@ jobs:
           grep -Fq "document.hidden)clearTimeout(ritmoLockTimer)" public/app.js
           if grep -Fq "root.insertAdjacentHTML('beforeend',\`<div class=\"lock\"" public/app.js; then echo 'Bloqueio antigo ainda presente'; exit 1; fi
 
-          echo '4/8 Auditoria de credenciais locais'
+          echo '4/9 Auditoria de credenciais locais'
           python3 - <<'PY'
           from pathlib import Path
           s=Path('public/app.js').read_text().lower()
@@ -117,14 +119,23 @@ jobs:
           print('Nenhuma senha persistida localmente')
           PY
 
-          echo '5/8 PWA e experiência nativa'
+          echo '5/9 PWA e experiência nativa'
           grep -Fq '"display": "standalone"' public/manifest.webmanifest
           grep -Fq '"start_url": "/?source=pwa"' public/manifest.webmanifest
           grep -Fq 'viewport-fit=cover' public/index.html
           grep -Fq 'navigator.storage.persist' public/app.js
           grep -Fq 'ritmoNativeCloudRestore' public/app.js
 
-          echo '6/8 Regressões visuais e navegação'
+          echo '6/9 Sheets, tab bar e motion'
+          grep -Fq 'function ritmoPrepareSheet' public/app.js
+          grep -Fq 'function ritmoDismissSheet' public/app.js
+          grep -Fq 'ritmo-sheet-open' public/styles.css
+          grep -Fq 'ritmo-native-sheet-wrap' public/styles.css
+          grep -Fq 'z-index:5000' public/styles.css
+          grep -Fq 'translate3d(0,calc(115% + env(safe-area-inset-bottom))' public/styles.css
+          grep -Fq 'prefers-reduced-motion:reduce' public/styles.css
+
+          echo '7/9 Regressões visuais e navegação'
           grep -Fq 'action-sheet' public/styles.css
           grep -Fq 'safe-area-inset-top' public/styles.css
           grep -Fq 'data-shortcut-drag' public/app.js
@@ -132,7 +143,7 @@ jobs:
           grep -Fq 'secure-lock' public/styles.css
           grep -Fq 'cash-forecast' public/styles.css
 
-          echo '7/8 Build de produção'
+          echo '8/9 Build de produção'
           npm install --no-audit --no-fund
           npm run build
           node --check dist/app.js
@@ -141,10 +152,12 @@ jobs:
           grep -Fq "function incomeIsRealized" dist/app.js
           grep -Fq "/api/auth/reverify" dist/_worker.js
           grep -Fq "function ritmoRenderAppCore" dist/app.js
+          grep -Fq "function ritmoPrepareSheet" dist/app.js
           grep -Fq "secure-lock" dist/styles.css
           grep -Fq "cash-forecast" dist/styles.css
+          grep -Fq "ritmo-sheet-open" dist/styles.css
 
-          echo '8/8 Artefatos essenciais'
+          echo '9/9 Artefatos essenciais'
           test -s dist/index.html
           test -s dist/app.js
           test -s dist/styles.css
@@ -205,10 +218,10 @@ jobs:
           set -euo pipefail
           BASE=https://ritmo-br.pages.dev
           for i in {1..36}; do
-            JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?finance=$GITHUB_SHA" || true)"
-            WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?finance=$GITHUB_SHA" || true)"
-            CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?finance=$GITHUB_SHA" || true)"
-            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && grep -Fq 'incomeIsRealized' /tmp/app.js && grep -Fq 'secure-lock' /tmp/styles.css; then break; fi
+            JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?native-sheet=$GITHUB_SHA" || true)"
+            WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?native-sheet=$GITHUB_SHA" || true)"
+            CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?native-sheet=$GITHUB_SHA" || true)"
+            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && grep -Fq 'incomeIsRealized' /tmp/app.js && grep -Fq 'secure-lock' /tmp/styles.css && grep -Fq 'ritmoPrepareSheet' /tmp/app.js && grep -Fq 'ritmo-sheet-open' /tmp/styles.css; then break; fi
             sleep 5
           done
           test "$JS" = 200; test "$WK" = 200; test "$CSS" = 200
@@ -216,4 +229,6 @@ jobs:
           grep -Fq 'Manter conta salva neste aparelho' /tmp/app.js
           grep -Fq 'A receber' /tmp/app.js
           grep -Fq 'ritmoRenderAppCore' /tmp/app.js
-          echo "Ritmo V1: inteligência financeira e bloqueio seguro validados em produção."
+          grep -Fq 'ritmoDismissSheet' /tmp/app.js
+          grep -Fq 'z-index:5000' /tmp/styles.css
+          echo "Ritmo V1: inteligência financeira, bloqueio seguro e sheets nativos validados em produção."
