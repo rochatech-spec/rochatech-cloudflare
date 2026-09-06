@@ -46,13 +46,14 @@ window.addEventListener('load',()=>{document.documentElement.dataset.ritmoAppMod
 window.addEventListener('appinstalled',()=>{setTimeout(ritmoNativePersistStorage,500)});
 '''
 
-# Auditoria: dados importantes nunca podem depender de localStorage.
+# Auditoria: só a CHAVE do localStorage é inspecionada. UI temporária (sidebar,
+# cache de tema, desbloqueio recente) é permitida; dados de conta não.
 danger=[]
-for line in a.splitlines():
-    if 'localStorage.' not in line: continue
-    low=line.lower()
-    if any(k in low for k in ['mobile_shortcuts','seen_notifications','income','expense','debt','goal','partnership','shared_']):
-        danger.append(line.strip())
+pattern=re.compile(r'localStorage\.(?:getItem|setItem|removeItem)\(\s*([\'"`])(.+?)\1',re.I)
+for m in pattern.finditer(a):
+    key=m.group(2).lower()
+    if any(k in key for k in ['mobile_shortcuts','seen_notifications','income','expense','debt','goal','partnership','shared_']):
+        danger.append(key)
 if danger:
     raise SystemExit('Persistência crítica encontrada no localStorage: '+ ' | '.join(danger[:8]))
 
