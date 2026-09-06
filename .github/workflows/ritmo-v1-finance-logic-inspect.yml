@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/ritmo-v1-finance-logic-inspect.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,8 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preparar processamento visual
-        run: python3 -m pip install --quiet pillow
+      - run: python3 -m pip install --quiet pillow
       - name: Montar Ritmo atual
         shell: bash
         run: |
@@ -43,31 +41,18 @@ jobs:
           python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
           python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
-      - name: Expor bloqueio e autenticação
+      - name: Expor auth backend
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          app=Path('/tmp/ritmo-v1/public/app.js').read_text()
-          def func(name):
-              starts=[app.find(f'function {name}('),app.find(f'async function {name}(')]
-              starts=[x for x in starts if x>=0]
-              if not starts:
-                  print(f'\n=== {name}: NAO ENCONTRADA ===');return
-              p=min(starts); candidates=[]
-              for token in ['\nfunction ','\nasync function ']:
-                  q=app.find(token,p+1)
-                  if q>p:candidates.append(q)
-              q=min(candidates) if candidates else min(len(app),p+16000)
-              print(f'\n=== FUNC {name} ===\n'+app[p:q][:16000])
-          for n in ['maybeLock','renderLock','unlockBiometric','toggleBiometric','renderAuth','authSubmit','loadApp','logout','saveSettings','settingsSubPage']:
-              func(n)
-          for needle in ['ritmo:lastUnlock','webauthn','auto_lock_minutes','sessionStorage','localStorage']:
-              print('\n=== NEEDLE',needle,'===')
+          s=Path('/tmp/ritmo-v1/_worker.js').read_text()
+          for needle in ['verifyPassword','passwordVerify','/api/auth/login','/api/auth/logout','requireUser','sessionToken','password_hash']:
+              print('\n===',needle,'===')
               start=0;hits=0
-              while hits<5:
-                  p=app.find(needle,start)
-                  if p<0:break
-                  print(app[max(0,p-1000):p+2800])
+              while hits<8:
+                  p=s.find(needle,start)
+                  if p<0: break
+                  print(s[max(0,p-1800):p+5000])
                   start=p+len(needle);hits+=1
           PY
