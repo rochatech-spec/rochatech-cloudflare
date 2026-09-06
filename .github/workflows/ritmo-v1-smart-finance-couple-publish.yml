@@ -1,0 +1,245 @@
+name: Ritmo V1 smart finance couple publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-v1-smart-finance-couple-publish.yml"
+      - ".github/scripts/ritmo_v1_smart_finance_couple_patch.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-v1-finance-security
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Preparar processamento visual
+        run: python3 -m pip install --quiet pillow
+      - name: Montar Ritmo Versão 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-v1 && mkdir -p /tmp/ritmo-v1
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+          python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_avatar_cloud_fallback.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_welcome_install_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_system_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_mobile_safearea_fix.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_action_sheet_icon_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_install_handoff_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_financial_intelligence_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_lock_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_sheet_motion_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_premium_lock_screen_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_smart_finance_couple_patch.py /tmp/ritmo-v1
+
+      - name: Bateria finanças, casal e interface nativa
+        working-directory: /tmp/ritmo-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '1/12 Sintaxe e schema'
+          node --check public/app.js
+          node --check _worker.js
+          node --check public/sw.js
+          rm -f /tmp/ritmo-test.db
+          sqlite3 /tmp/ritmo-test.db < schema.sql
+
+          echo '2/12 Realizado x previsto'
+          grep -Fq 'function incomeIsRealized' public/app.js
+          grep -Fq 'balance=income-paid' public/app.js
+          grep -Fq 'forecast=balance+receivable-pending' public/app.js
+          grep -Fq 'A receber' public/app.js
+          grep -Fq 'A pagar' public/app.js
+          node - <<'NODE'
+          const today='2026-09-06';
+          const incomes=[{amount:1200,date:'2026-09-05'},{amount:5000,date:'2026-10-05'}];
+          const expenses=[{amount:200,date:'2026-09-04',status:'pago'},{amount:400,date:'2026-09-20',status:'pendente'}];
+          const ri=incomes.filter(x=>x.date<=today),fi=incomes.filter(x=>x.date>today),ro=expenses.filter(x=>x.status==='pago'&&x.date<=today),fo=expenses.filter(x=>!(x.status==='pago'&&x.date<=today));
+          const balance=ri.reduce((s,x)=>s+x.amount,0)-ro.reduce((s,x)=>s+x.amount,0),forecast=balance+fi.reduce((s,x)=>s+x.amount,0)-fo.reduce((s,x)=>s+x.amount,0);
+          if(balance!==1000||forecast!==5600)throw new Error('realizado/previsto');
+          NODE
+
+          echo '3/12 Estratégia de metas'
+          grep -Fq 'function goalStrategy(g)' public/app.js
+          grep -Fq 'goal-strategy' public/styles.css
+          grep -Fq 'Dá para acelerar' public/app.js
+          grep -Fq 'Para concluir em 12 meses' public/app.js
+          grep -Fq 'por pessoa/mês' public/app.js
+
+          echo '4/12 AV sincronizado com dívida/saída'
+          grep -Fq 'data-debt-av' public/app.js
+          grep -Fq "o.notes=\`[AV]" public/app.js
+          grep -Fq "type:'payment',debtId:av.dataset.debtAv,av:true" public/app.js
+          grep -Fq 'AV registrado: dívida e saída atualizadas juntas.' public/app.js
+          grep -Fq 'Gerenciar na dívida' public/app.js
+          grep -Fq 'debt_event_id' _worker.js
+
+          echo '5/12 Casal inteligente e privacidade'
+          grep -Fq 'smart-record-scope' public/app.js
+          grep -Fq 'Só meu' public/app.js
+          grep -Fq 'Do casal' public/app.js
+          grep -Fq 'data-shared-quick' public/app.js
+          grep -Fq 'Vida em comum sem abrir mão da individualidade.' public/app.js
+          grep -Fq "const chosen=o.record_scope||o.goal_scope||m.recordScope" public/app.js
+          grep -Fq "targetScope=chosen==='shared'?'shared':'personal'" public/app.js
+          grep -Fq 'partnership_members' schema.sql
+          grep -Fq 'shared_expenses' schema.sql
+          grep -Fq 'shared_debts' schema.sql
+
+          echo '6/12 Isolamento pessoal/compartilhado'
+          grep -Fq "scope==='shared'?'/api/shared':'/api'" public/app.js
+          grep -Fq 'user_workspace_settings' schema.sql
+          grep -Fq 'shared_goal_contributions' schema.sql
+          grep -Fq 'created_by' schema.sql
+
+          echo '7/12 Bloqueio premium'
+          grep -Fq '/api/auth/reverify' _worker.js
+          grep -Fq 'function ritmoRenderAppCore' public/app.js
+          grep -Fq 'class="secure-lock premium-lock"' public/app.js
+          grep -Fq 'premium-password-toggle' public/app.js
+          grep -Fq 'document.hidden)clearTimeout(ritmoLockTimer)' public/app.js
+
+          echo '8/12 Credenciais locais'
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('public/app.js').read_text().lower()
+          bad=['localstorage.setitem(\'password','localstorage.setitem("password','localstorage.setitem(`password','ritmo:saved-password']
+          if any(x in s for x in bad): raise SystemExit('senha persistida localmente')
+          if 'ritmo:saved-account' not in s: raise SystemExit('conta salva ausente')
+          PY
+
+          echo '9/12 PWA nativo'
+          grep -Fq '"display": "standalone"' public/manifest.webmanifest
+          grep -Fq 'viewport-fit=cover' public/index.html
+          grep -Fq 'navigator.storage.persist' public/app.js
+          grep -Fq 'ritmoNativeCloudRestore' public/app.js
+
+          echo '10/12 Sheets, safe area e motion'
+          grep -Fq 'function ritmoPrepareSheet' public/app.js
+          grep -Fq 'function ritmoDismissSheet' public/app.js
+          grep -Fq 'ritmo-sheet-open' public/styles.css
+          grep -Fq 'z-index:5000' public/styles.css
+          grep -Fq 'prefers-reduced-motion:reduce' public/styles.css
+          grep -Fq 'safe-area-inset-bottom' public/styles.css
+
+          echo '11/12 Build de produção'
+          npm install --no-audit --no-fund
+          npm run build
+          node --check dist/app.js
+          node --check dist/_worker.js
+          node --check dist/sw.js
+          grep -Fq 'function goalStrategy(g)' dist/app.js
+          grep -Fq 'data-debt-av' dist/app.js
+          grep -Fq 'smart-record-scope' dist/app.js
+          grep -Fq 'premium-lock' dist/app.js
+          grep -Fq 'ritmo-sheet-open' dist/styles.css
+
+          echo '12/12 Artefatos essenciais'
+          test -s dist/index.html
+          test -s dist/app.js
+          test -s dist/styles.css
+          test -s dist/manifest.webmanifest
+          test -s dist/sw.js
+          echo 'Bateria completa aprovada.'
+
+      - name: Iniciar autorização Cloudflare
+        id: auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "mode=token" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          (unset RUNNER_TRACKING_ID; nohup npx --yes wrangler@latest login --device --browser=false > "$LOG" 2>&1 & echo $! > "$PID")
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then cat "$LOG"; exit 0; fi
+            sleep 1
+          done
+          cat "$LOG"; exit 1
+
+      - name: Disponibilizar autorização
+        if: steps.auth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-v1-smart-finance-couple-cloudflare-authorization
+          path: cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização
+        if: steps.auth.outputs.mode == 'device'
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="$(cat "$GITHUB_WORKSPACE/cloudflare-device-login.pid")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then exit 0; fi
+            if ! kill -0 "$P" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Identificar conta
+        id: account
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        working-directory: /tmp/ritmo-v1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Validar produção
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://ritmo-br.pages.dev
+          for i in {1..36}; do
+            JS="$(curl -sS -o /tmp/app.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/app.js?smart=$GITHUB_SHA" || true)"
+            WK="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?smart=$GITHUB_SHA" || true)"
+            CSS="$(curl -sS -o /tmp/styles.css -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/styles.css?smart=$GITHUB_SHA" || true)"
+            if [ "$JS" = 200 ] && [ "$WK" = 200 ] && [ "$CSS" = 200 ] && grep -Fq 'goalStrategy' /tmp/app.js && grep -Fq 'data-debt-av' /tmp/app.js && grep -Fq 'smart-record-scope' /tmp/app.js && grep -Fq 'premium-lock' /tmp/app.js; then break; fi
+            sleep 5
+          done
+          test "$JS" = 200; test "$WK" = 200; test "$CSS" = 200
+          grep -q '"ok":true' /tmp/health.json
+          grep -Fq 'Dá para acelerar' /tmp/app.js
+          grep -Fq 'AV registrado: dívida e saída atualizadas juntas.' /tmp/app.js
+          grep -Fq 'Vida em comum sem abrir mão da individualidade.' /tmp/app.js
+          grep -Fq 'ritmoDismissSheet' /tmp/app.js
+          echo 'Ritmo V1: metas estratégicas, AV, casal inteligente e UX nativa validados em produção.'
