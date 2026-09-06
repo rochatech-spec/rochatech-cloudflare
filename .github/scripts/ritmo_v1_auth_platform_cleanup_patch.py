@@ -12,6 +12,10 @@ def remove_func_if_present(source,name):
     if f'function {name}(' not in source and f'async function {name}(' not in source:return source
     p,q=js_function_bounds(source,name);return source[:p]+source[q:]
 
+# Nome único para a proteção do aparelho, abrangendo Face ID, Touch ID, digital,
+# passkeys e Windows Hello sem confundir o usuário com detalhes técnicos.
+a=a.replace('<strong>Biometria e chave de acesso</strong>','<strong>Desbloqueio do aparelho</strong>')
+
 # Turnstile/CAPTCHA sai por completo do cliente. O login continua protegido por
 # Same-Origin, rate limit, hash de senha, cookie HttpOnly/Secure e sessão no servidor.
 a=a.replace("turnstileToken:'',turnstileWidget:null,",'',1)
@@ -42,6 +46,7 @@ w=w.replace("  if(path==='/api/security/config'&&request.method==='GET')return j
 for text,name in [(a,'app.js'),(idx,'index.html'),(w,'_worker.js')]:
     if 'turnstile' in text.lower():raise SystemExit(f'Turnstile ainda presente em {name}')
 if 'sameOrigin(request)' not in w or 'rateLimit(env,request' not in w:raise SystemExit('Proteções essenciais de autenticação ausentes')
+if '<strong>Desbloqueio do aparelho</strong>' not in a:raise SystemExit('Rótulo de desbloqueio do aparelho ausente')
 
 app.write_text(a);worker.write_text(w);indexp.write_text(idx);cssp.write_text(css)
-print('Ritmo V1: Turnstile removido do cliente e do backend; proteções essenciais preservadas.')
+print('Ritmo V1: Turnstile removido e desbloqueio do aparelho consolidado; proteções essenciais preservadas.')
