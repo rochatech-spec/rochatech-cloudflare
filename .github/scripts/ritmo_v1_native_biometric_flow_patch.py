@@ -37,46 +37,33 @@ repw("allowCredentials:(creds.results||[]).map(x=>({id:x.credential_id,transport
 app.write_text(a);worker.write_text(w)
 print('Biometria natural aplicada: autenticador interno, prompt automático e fallback por senha.')
 
-# Mantém a otimização de desempenho como módulo separado, mas sempre aplicada junto
-# do último patch nativo para não depender de uma etapa extra no pipeline.
 perf=Path(__file__).with_name('ritmo_v1_native_performance_patch.py')
 if not perf.exists():
  raise SystemExit('Patch de desempenho nativo não encontrado')
 ns={'__name__':'__main__','__file__':str(perf)}
 exec(compile(perf.read_text(),str(perf),'exec'),ns,ns)
 
-# O otimizador não pode remover garantias do bloqueio. A rotina abaixo restaura
-# somente o listener de visibilidade se algum recorte de função o tiver consumido.
 a=app.read_text();w=worker.read_text()
 visibility_marker='document.hidden)clearTimeout(ritmoLockTimer)'
 if visibility_marker not in a:
  a += "\ndocument.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(ritmoLockTimer);else maybeLock(false)});\n"
  app.write_text(a)
-required_app=[
- "sessionStorage.getItem(k)==='1'",
- 'function ritmoRenderAppCore',
- visibility_marker,
- 'Manter conta salva neste aparelho',
- 'class="secure-lock premium-lock"'
-]
+required_app=["sessionStorage.getItem(k)==='1'",'function ritmoRenderAppCore',visibility_marker,'Manter conta salva neste aparelho','class="secure-lock premium-lock"']
 for marker in required_app:
  if marker not in app.read_text(): raise SystemExit('Preservação de bloqueio ausente: '+marker)
 if '/api/auth/reverify' not in w: raise SystemExit('Preservação de bloqueio ausente: /api/auth/reverify')
 print('Ritmo V1: garantias de bloqueio preservadas após otimização.')
 
-# Estabiliza boot/PWA, elimina mistura de cache entre releases, remove a ação de
-# continuar pelo navegador no Android/desktop e instala o smoke real de Chrome.
 stability=Path(__file__).with_name('ritmo_v1_boot_install_stability_patch.py')
 if not stability.exists():
  raise SystemExit('Patch de estabilidade de boot não encontrado')
 ns2={'__name__':'__main__','__file__':str(stability)}
 exec(compile(stability.read_text(),str(stability),'exec'),ns2,ns2)
 
-# Etapa final de UX de abertura: sem splash. O login precisa aparecer antes de
-# rede, bootstrap e service worker; sessão existente continua sendo resolvida em
-# segundo plano.
 instant=Path(__file__).with_name('ritmo_v1_instant_login_boot_patch.py')
 if not instant.exists():
  raise SystemExit('Patch de login imediato não encontrado')
 ns3={'__name__':'__main__','__file__':str(instant)}
 exec(compile(instant.read_text(),str(instant),'exec'),ns3,ns3)
+
+# Reexecução: login imediato sem splash.
