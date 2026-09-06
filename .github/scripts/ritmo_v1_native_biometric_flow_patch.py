@@ -63,3 +63,12 @@ for marker in required_app:
  if marker not in app.read_text(): raise SystemExit('Preservação de bloqueio ausente: '+marker)
 if '/api/auth/reverify' not in w: raise SystemExit('Preservação de bloqueio ausente: /api/auth/reverify')
 print('Ritmo V1: garantias de bloqueio preservadas após otimização.')
+
+# Último estágio: estabiliza boot/PWA, elimina mistura de cache entre releases,
+# remove a ação de continuar pelo navegador no Android/desktop e instala o smoke
+# real de Chrome no build.
+stability=Path(__file__).with_name('ritmo_v1_boot_install_stability_patch.py')
+if not stability.exists():
+ raise SystemExit('Patch de estabilidade de boot não encontrado')
+ns2={'__name__':'__main__','__file__':str(stability)}
+exec(compile(stability.read_text(),str(stability),'exec'),ns2,ns2)
