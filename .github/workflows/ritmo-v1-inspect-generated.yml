@@ -1,0 +1,65 @@
+name: Ritmo V1 inspect generated
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-v1-inspect-generated.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar processamento visual
+        run: python3 -m pip install --quiet pillow
+      - name: Montar Ritmo atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-v1 && mkdir -p /tmp/ritmo-v1
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+          python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_avatar_cloud_fallback.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_welcome_install_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_ios_system_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_mobile_safearea_fix.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_action_sheet_icon_polish.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_install_handoff_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_financial_intelligence_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_lock_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_native_sheet_motion_patch.py /tmp/ritmo-v1
+          python3 .github/scripts/ritmo_v1_premium_lock_screen_patch.py /tmp/ritmo-v1
+          node --check /tmp/ritmo-v1/public/app.js
+          node --check /tmp/ritmo-v1/_worker.js
+      - name: Empacotar fontes montadas
+        shell: bash
+        run: |
+          mkdir -p /tmp/inspect
+          cp /tmp/ritmo-v1/public/app.js /tmp/inspect/app.js
+          cp /tmp/ritmo-v1/public/styles.css /tmp/inspect/styles.css
+          cp /tmp/ritmo-v1/_worker.js /tmp/inspect/_worker.js
+          cp /tmp/ritmo-v1/schema.sql /tmp/inspect/schema.sql
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-v1-generated-inspect
+          path: /tmp/inspect
+          retention-days: 1
