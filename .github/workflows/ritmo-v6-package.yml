@@ -8,6 +8,7 @@ on:
       - ".github/scripts/ritmo_v7_ux_patch.py"
       - ".github/scripts/ritmo_v1_update_patch.py"
       - ".github/scripts/ritmo_v1_device_security_ux.py"
+      - ".github/scripts/ritmo_v1_brand_menu_patch.py"
   workflow_dispatch:
 
 permissions:
@@ -53,6 +54,9 @@ jobs:
       - name: Aplicar segurança por dispositivo
         run: python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-v1
 
+      - name: Aplicar identidade oficial e Menu
+        run: python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-v1
+
       - name: Validar sintaxe e regras Rocha Tech
         shell: bash
         run: |
@@ -73,9 +77,15 @@ jobs:
           grep -Fq "Aplicativo" /tmp/ritmo-v1/public/app.js
           grep -Fq "data-system-update" /tmp/ritmo-v1/public/app.js
           grep -Fq "updateSystemNow" /tmp/ritmo-v1/public/app.js
+          grep -Fq "menu-update-btn" /tmp/ritmo-v1/public/app.js
+          grep -Fq "['more','Menu','menu']" /tmp/ritmo-v1/public/app.js
+          grep -Fq "head('Menu'" /tmp/ritmo-v1/public/app.js
+          grep -Fq "ritmo-logo.png" /tmp/ritmo-v1/public/app.js
+          grep -Fq "ritmo-icon-192.png" /tmp/ritmo-v1/public/app.js
           grep -Fq "navigator.serviceWorker.getRegistrations" /tmp/ritmo-v1/public/app.js
           grep -Fq "caches.keys" /tmp/ritmo-v1/public/app.js
           grep -Fq "ritmo-shell-v1-current" /tmp/ritmo-v1/public/sw.js
+          grep -Fq "ritmo-icon-512.png" /tmp/ritmo-v1/public/sw.js
           grep -Fq "cache:'no-store'" /tmp/ritmo-v1/public/sw.js
           grep -Fq "CLEAR_RITMO_CACHE" /tmp/ritmo-v1/public/sw.js
           grep -Fq "Cache-Control: no-cache, no-store, must-revalidate" /tmp/ritmo-v1/public/_headers
@@ -89,6 +99,11 @@ jobs:
           grep -Fq "Face ID/Touch ID" /tmp/ritmo-v1/public/app.js
           grep -Fq "authenticatorAttachment:'platform'" /tmp/ritmo-v1/_worker.js
           grep -Fq "userVerification:'required'" /tmp/ritmo-v1/_worker.js
+          grep -Fq '"/ritmo-icon-192.png"' /tmp/ritmo-v1/public/manifest.webmanifest
+          grep -Fq '"/ritmo-icon-512.png"' /tmp/ritmo-v1/public/manifest.webmanifest
+          test -s /tmp/ritmo-v1/public/ritmo-logo.png
+          test -s /tmp/ritmo-v1/public/ritmo-icon-192.png
+          test -s /tmp/ritmo-v1/public/ritmo-icon-512.png
           ! grep -Fq "},8000)" /tmp/ritmo-v1/public/app.js
           ! grep -Fq "ritmo:seen:" /tmp/ritmo-v1/public/app.js
           ! grep -E "localStorage\.(setItem|getItem).*mobile_shortcuts|localStorage\.(setItem|getItem).*seen_notifications" /tmp/ritmo-v1/public/app.js
@@ -104,12 +119,18 @@ jobs:
           test -s dist/_worker.js
           test -s dist/sw.js
           test -s dist/_headers
+          test -s dist/ritmo-logo.png
+          test -s dist/ritmo-icon-192.png
+          test -s dist/ritmo-icon-512.png
           grep -Fq "Personalizar atalhos" dist/app.js
           grep -Fq "data-shortcut-move" dist/app.js
           grep -Fq "function fabHtml" dist/app.js
           grep -Fq "data-system-update" dist/app.js
+          grep -Fq "menu-update-btn" dist/app.js
+          grep -Fq "['more','Menu','menu']" dist/app.js
           grep -Fq "Biometria e chave de acesso" dist/app.js
           grep -Fq "Samsung Pass" dist/app.js
+          grep -Fq "ritmo-logo.png" dist/app.js
           grep -Fq "ritmo-shell-v1-current" dist/sw.js
 
       - name: Empacotar Versão 1
@@ -136,5 +157,5 @@ jobs:
             echo "Pacote já está atualizado."
             exit 0
           fi
-          git commit -m "Ritmo V1: segurança nativa por dispositivo"
+          git commit -m "Ritmo V1: identidade oficial e Menu"
           git push origin HEAD:main
