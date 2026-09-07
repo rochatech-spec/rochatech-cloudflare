@@ -1,0 +1,10 @@
+{
+  "name":"Ritmo — Gestão Pessoal",
+  "short_name":"Ritmo",
+  "description":"Controle financeiro pessoal e compartilhado com seu parceiro, sem movimentar dinheiro.",
+  "start_url":"/",
+  "display":"standalone",
+  "background_color":"#F7F5EF",
+  "theme_color":"#0F4C5C",
+  "icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

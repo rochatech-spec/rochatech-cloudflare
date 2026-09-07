@@ -1,0 +1,93 @@
+name: Ritmo clean v2
+
+on:
+  pull_request:
+    paths:
+      - "ritmo-zero/**"
+      - ".github/workflows/ritmo-zero.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ritmo-zero/**"
+      - ".github/workflows/ritmo-zero.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ritmo-zero
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: node --check dist/_worker.js
+      - name: Validate release files
+        run: |
+          test -s dist/index.html
+          test -s dist/manifest.webmanifest
+          test -s dist/sw.js
+          test -s dist/icon.svg
+          test -s dist/brand-wordmark.svg
+          test -s dist/version.json
+          grep -Fq 'Nosso Ritmo' src/App.tsx
+          grep -Fq 'não é banco' src/App.tsx
+          grep -Fq 'indexedDB.open' src/db.ts
+          grep -Fq 'PBKDF2' worker/index.js
+          grep -Fq 'couple_contributions' worker/schema-current.sql
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NO_COLOR: "1"
+    defaults:
+      run:
+        working-directory: ritmo-zero
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Identify Cloudflare account
+        id: cf
+        shell: bash
+        run: |
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID=$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+      - name: Apply D1 schema
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf.outputs.account_id }}
+        run: npx --yes wrangler@latest d1 execute ritmo-db --remote --file worker/schema-current.sql
+      - name: Deploy Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cf.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+      - name: Validate production
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          BASE=https://ritmo-96q.pages.dev
+          for i in {1..30}; do
+            CODE=$(curl -sS -o /tmp/health.json -w '%{http_code}' "$BASE/api/health?release=$GITHUB_SHA" || true)
+            if [ "$CODE" = 200 ] && grep -Fq '"ok":true' /tmp/health.json && grep -Fq '"version":"2.0.0"' /tmp/health.json; then exit 0; fi
+            sleep 5
+          done
+          cat /tmp/health.json || true
+          exit 1
