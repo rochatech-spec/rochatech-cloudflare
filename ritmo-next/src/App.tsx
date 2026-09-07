@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, login, logout, mutate, register, scopePrefix } from './api/client'
+import { Brand } from './components/Brand'
 import { FinancialSheet, type FinancialAction, type FinancialPayload } from './components/FinancialSheet'
 import { LockScreen } from './components/LockScreen'
+import { ProfileAvatar } from './components/ProfileAvatar'
 import { ProfileSwitcher } from './components/ProfileSwitcher'
 import type { BootstrapData, Debt, FinancialScope, Goal, PageKey, Settings } from './domain/types'
 import { clearFinancialCache } from './offline/db'
@@ -134,7 +136,7 @@ function App() {
 
   const noticeCount=useMemo(()=>data?buildNotices(data).length:0,[data])
 
-  if(loading&&!data)return <div className="app-loading"><span className="loading-logo">R</span><strong>Ritmo</strong></div>
+  if(loading&&!data)return <div className="app-loading"><Brand variant="icon" className="loading-brand-icon"/><strong>Ritmo</strong></div>
   if(authRequired||!data)return <AuthPage onLogin={(u,p)=>authenticate('login',[u,p])} onRegister={(n,u,p)=>authenticate('register',[n,u,p])}/>
   if(locked)return <LockScreen data={data} onUnlock={()=>{lastActivity.current=Date.now();setLocked(false)}} onOtherAccount={()=>void otherAccount()}/>
 
@@ -148,15 +150,15 @@ function App() {
     if(page==='calendar')return <CalendarPage data={data}/>
     if(page==='insights')return <InsightsPage data={data}/>
     if(page==='settings')return <SettingsPage settings={data.settings||{}} userId={data.profile.id} credentialCount={Number(data.security?.webauthn_count||0)} onSave={saveSettings} onSecurityChanged={()=>refreshCurrent(scope)}/>
-    if(page==='profile')return <ProfilePage profile={data.profile} onSave={saveProfile} onLogout={otherAccount}/>
+    if(page==='profile')return <ProfilePage profile={data.profile} onSave={saveProfile} onLogout={otherAccount} onAvatarChanged={()=>refreshCurrent(scope)}/>
     if(page==='notifications')return <NotificationsPage data={data}/>
     return <MenuPage onOpen={setPage}/>
   })()
 
   return <div className="app-shell">
-    <aside className="desktop-sidebar"><button className="brand-button" type="button" onClick={()=>setPage('home')}><span>R</span><strong>Ritmo</strong></button><nav>{desktopNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav><button className="sidebar-profile" type="button" onClick={()=>setPage('profile')}><span>{data.profile.name.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.name}</strong><small>@{data.profile.username}</small></div></button></aside>
+    <aside className="desktop-sidebar"><button className="brand-button" type="button" onClick={()=>setPage('home')}><Brand/></button><nav>{desktopNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav><button className="sidebar-profile" type="button" onClick={()=>setPage('profile')}><ProfileAvatar profile={data.profile} className="sidebar-profile-avatar"/><div><strong>{data.profile.name}</strong><small>@{data.profile.username}</small></div></button></aside>
     <div className="app-column">
-      <header className="mobile-topbar"><button className="mobile-brand" type="button" onClick={()=>setPage('home')}><span>R</span><strong>Ritmo</strong></button><button className="notification-button" type="button" onClick={()=>setPage('notifications')} aria-label="Avisos"><Icon name="bell"/>{noticeCount>0&&<i>{Math.min(99,noticeCount)}</i>}</button></header>
+      <header className="mobile-topbar"><button className="mobile-brand" type="button" onClick={()=>setPage('home')}><Brand/></button><button className="notification-button" type="button" onClick={()=>setPage('notifications')} aria-label="Avisos"><Icon name="bell"/>{noticeCount>0&&<i>{Math.min(99,noticeCount)}</i>}</button></header>
       <main className="app-main">{page==='home'&&<ProfileSwitcher scope={scope} data={data} onChange={(value)=>void switchProfile(value)} busy={switching}/>}<div className="page-frame" key={`${page}-${scope}`}>{pageContent}</div></main>
       <nav className="bottom-nav">{mobileNav.map(item=><NavButton key={item.page} item={item} active={page===item.page||(item.page==='menu'&&menuPages.has(page))} onClick={()=>setPage(item.page)}/>)}</nav>
     </div>
