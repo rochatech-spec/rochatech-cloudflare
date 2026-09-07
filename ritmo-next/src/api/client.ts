@@ -80,6 +80,19 @@ export async function mutate<T = { ok: true }>(
   })
 }
 
+export async function uploadAvatar(file: Blob): Promise<void> {
+  const response = await fetch('/api/avatar', {
+    method: 'PUT',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': file.type || 'image/webp',
+    },
+    body: file,
+  })
+  await parseResponse(response)
+}
+
 export async function fetchReport(scope: FinancialScope, from: string, to: string): Promise<WalletReport> {
   const params = new URLSearchParams({ scope, from, to })
   return jsonRequest<WalletReport>(`/api/wallet/report?${params.toString()}`)
