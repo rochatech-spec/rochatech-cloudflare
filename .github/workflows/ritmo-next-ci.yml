@@ -2,7 +2,7 @@ name: Ritmo Next architecture CI
 
 on:
   push:
-    branches: [main, ritmo-next-migration]
+    branches: [main, ritmo-next-migration, ritmo-ios-parity]
     paths:
       - "ritmo-next/**"
       - ".github/workflows/ritmo-next-ci.yml"
@@ -54,6 +54,27 @@ jobs:
           if grep -Fq 'financialPages.has(page)&&<ProfileSwitcher' src/App.tsx; then echo '✗ seletor de perfil reapareceu em páginas internas' >&2; exit 1; fi
           if MATCHES="$(grep -Rin -i 'extrato' src || true)" && [ -n "$MATCHES" ]; then printf '%s\n' "$MATCHES"; echo '✗ nomenclatura antiga encontrada' >&2; exit 1; fi
           echo '✓ nomenclatura somente Relatório'
+      - name: Paridade do projeto original evoluída
+        shell: bash
+        run: |
+          set -euo pipefail
+          need(){ local label="$1" file="$2" text="$3"; grep -Fq "$text" "$file" || { echo "✗ $label" >&2; exit 1; }; echo "✓ $label"; }
+          need 'Atalhos configuráveis' src/App.tsx 'mobile_shortcuts'
+          need 'Antecedência de avisos' src/pages/SettingsPage.tsx 'reminder_days'
+          need 'Resumo mensal' src/pages/SettingsPage.tsx 'monthly_summary'
+          need 'Recebido e A receber' src/pages/MovementsPage.tsx 'A receber'
+          need 'Marcar recebido' src/pages/MovementsPage.tsx 'Marcar recebido'
+          need 'Marcar pago' src/pages/MovementsPage.tsx 'Marcar pago'
+          need 'Histórico da dívida' src/pages/DebtsPage.tsx 'Histórico'
+          need 'Estratégia das metas' src/pages/GoalsPage.tsx 'Estratégia do Ritmo'
+          need 'Perfil completo' src/pages/ProfilePage.tsx 'Segurança da conta'
+          need 'Menu agrupado estilo iOS' src/pages/MenuPage.tsx 'Seu Ritmo'
+          need 'Marca original vetorial' src/components/Brand.tsx '/brand-wordmark.svg'
+          test -s public/icon.svg
+          test -s public/brand-wordmark.svg
+          test $(wc -c < public/icon.svg) -gt 10000
+          test $(wc -c < public/brand-wordmark.svg) -gt 8000
+          echo '✓ Paridade funcional e identidade original preservadas.'
       - name: Face ID biometria e fallback por aparelho
         shell: bash
         run: |
