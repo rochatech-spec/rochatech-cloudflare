@@ -13,9 +13,10 @@ export function HomePage({ data, scope, onQuick, onReport, onSharing }: { data: 
   const partner = data.sharing?.partner
   const balance = shared ? data.wallet.shared_balance : data.wallet.personal_balance
   const stats = useMemo(() => {
-    const income = data.incomes.filter((item) => item.date <= (data.server_time || '').slice(0, 10) || true).reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const paid = data.expenses.filter((item) => item.status === 'pago').reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const pending = data.expenses.filter((item) => item.status !== 'pago').reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const cutoff = (data.server_time || new Date().toISOString()).slice(0, 10)
+    const income = data.incomes.filter((item) => item.date <= cutoff).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const paid = data.expenses.filter((item) => item.status === 'pago' && item.date <= cutoff).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const pending = data.expenses.filter((item) => !(item.status === 'pago' && item.date <= cutoff)).reduce((sum, item) => sum + Number(item.amount || 0), 0)
     const debt = data.debts.reduce((sum, item) => sum + Number(item.balance ?? item.total_amount ?? 0), 0)
     return { income, paid, pending, debt }
   }, [data])
