@@ -1,0 +1,156 @@
+name: Ritmo Next production publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ritmo-next/**"
+      - ".github/workflows/ritmo-next-publish.yml"
+      - ".github/workflows/ritmo-next-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-next-production
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NO_COLOR: "1"
+    defaults:
+      run:
+        working-directory: ritmo-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Validar arquitetura final
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run build
+          npm run audit
+          test -s dist/index.html
+          test -s dist/manifest.webmanifest
+          test -s dist/sw.js
+          test -s dist/_worker.js
+          test -s dist/version.json
+          grep -Fq 'indexedDB.open' src/offline/db.ts
+          grep -Fq "authenticatorAttachment:'platform'" src/security/passkeys.ts
+          grep -Fq "userVerification:'required'" src/security/passkeys.ts
+          grep -Fq 'Face ID / Touch ID' src/security/passkeys.ts
+          grep -Fq 'Biometria do aparelho' src/security/passkeys.ts
+          grep -Fq 'Usar senha' src/components/LockScreen.tsx
+          grep -Fq "page==='home'&&<ProfileSwitcher" src/App.tsx
+          test "$(grep -Rho '<ProfileSwitcher' src --include='*.tsx' | wc -l | tr -d ' ')" = "1"
+          if grep -R "setInterval" src; then echo 'setInterval proibido' >&2; exit 1; fi
+          BYTES=$(find dist/assets -type f \( -name '*.js' -o -name '*.css' \) -printf '%s\n' | awk '{s+=$1} END {print s+0}')
+          echo "Bundle JS+CSS: ${BYTES} bytes"
+          test "$BYTES" -le 450000
+          node --check dist/_worker.js
+          rm -f /tmp/ritmo-next-release.db
+          sqlite3 /tmp/ritmo-next-release.db < worker/schema-current.sql
+          grep -Fq 'wallet_transactions' worker/schema-current.sql
+          grep -Fq 'audit_log' worker/schema-current.sql
+          grep -Fq 'partnership_members' worker/schema-current.sql
+          echo 'Release final aprovada antes da Cloudflare.'
+
+      - name: Iniciar autorização Cloudflare
+        id: auth
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then echo "mode=token" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          (unset RUNNER_TRACKING_ID; nohup npx --yes wrangler@latest login --device --browser=false > "$LOG" 2>&1 & echo $! > "$PID")
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then cat "$LOG"; exit 0; fi
+            sleep 1
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Disponibilizar autorização
+        if: steps.auth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-next-cloudflare-authorization
+          path: cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização
+        if: steps.auth.outputs.mode == 'device'
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          P="$(cat "$GITHUB_WORKSPACE/cloudflare-device-login.pid")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then exit 0; fi
+            if ! kill -0 "$P" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Identificar conta
+        id: account
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar Ritmo Next
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: npx --yes wrangler@latest pages deploy dist --project-name ritmo-br --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Validar produção
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          BASE=https://ritmo-br.pages.dev
+          OK=0
+          for i in {1..36}; do
+            IDX=$(curl -sS -o /tmp/ritmo-next-index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_SHA" || true)
+            HLT=$(curl -sS -o /tmp/ritmo-next-health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?release=$GITHUB_SHA" || true)
+            MAN=$(curl -sS -o /tmp/ritmo-next-manifest.webmanifest -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/manifest.webmanifest?release=$GITHUB_SHA" || true)
+            SW=$(curl -sS -o /tmp/ritmo-next-sw.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/sw.js?release=$GITHUB_SHA" || true)
+            VER=$(curl -sS -o /tmp/ritmo-next-version.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/version.json?release=$GITHUB_SHA" || true)
+            if [ "$IDX" = 200 ] && [ "$HLT" = 200 ] && [ "$MAN" = 200 ] && [ "$SW" = 200 ] && [ "$VER" = 200 ] && grep -q '"ok":true' /tmp/ritmo-next-health.json && grep -Fq 'type="module"' /tmp/ritmo-next-index.html; then OK=1; break; fi
+            sleep 5
+          done
+          test "$OK" = 1
+          grep -Fq 'standalone' /tmp/ritmo-next-manifest.webmanifest
+          JS_PATH=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/ritmo-next-index.html | head -1 | cut -d'"' -f2)
+          CSS_PATH=$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/ritmo-next-index.html | head -1 | cut -d'"' -f2)
+          test -n "$JS_PATH"; test -n "$CSS_PATH"
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE$JS_PATH?release=$GITHUB_SHA" -o /tmp/ritmo-next-app.js
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE$CSS_PATH?release=$GITHUB_SHA" -o /tmp/ritmo-next-app.css
+          grep -Fq 'Face ID / Touch ID' /tmp/ritmo-next-app.js
+          grep -Fq 'Biometria do aparelho' /tmp/ritmo-next-app.js
+          grep -Fq 'Transferir para o casal' /tmp/ritmo-next-app.js
+          grep -Fq 'Destino da entrada' /tmp/ritmo-next-app.js
+          grep -Fq 'Pagar com' /tmp/ritmo-next-app.js
+          grep -Fq 'Gerar PDF' /tmp/ritmo-next-app.js
+          ! grep -Fqi 'extrato' /tmp/ritmo-next-app.js
+          echo 'Ritmo Next validado no domínio oficial.'
