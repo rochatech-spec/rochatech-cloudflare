@@ -54,6 +54,28 @@ jobs:
           if grep -Fq 'financialPages.has(page)&&<ProfileSwitcher' src/App.tsx; then echo '✗ seletor de perfil reapareceu em páginas internas' >&2; exit 1; fi
           if MATCHES="$(grep -Rin -i 'extrato' src || true)" && [ -n "$MATCHES" ]; then printf '%s\n' "$MATCHES"; echo '✗ nomenclatura antiga encontrada' >&2; exit 1; fi
           echo '✓ nomenclatura somente Relatório'
+      - name: Face ID biometria e fallback por aparelho
+        shell: bash
+        run: |
+          set -euo pipefail
+          need(){ local label="$1" file="$2" text="$3"; grep -Fq "$text" "$file" || { echo "✗ $label" >&2; exit 1; }; echo "✓ $label"; }
+          need 'Face ID / Touch ID no iPhone e iPad' src/security/passkeys.ts 'Face ID / Touch ID'
+          need 'Biometria no Android' src/security/passkeys.ts 'Biometria do aparelho'
+          need 'Windows Hello' src/security/passkeys.ts 'Windows Hello'
+          need 'Touch ID no Mac' src/security/passkeys.ts "label:'Touch ID'"
+          need 'Autenticador local obrigatório' src/security/passkeys.ts "authenticatorAttachment:'platform'"
+          need 'Verificação do usuário obrigatória' src/security/passkeys.ts "userVerification:'required'"
+          need 'Disponibilidade do autenticador local' src/security/passkeys.ts 'isUserVerifyingPlatformAuthenticatorAvailable'
+          need 'Cancelamento com mensagem humana' src/security/passkeys.ts "name === 'NotAllowedError'"
+          need 'Lock screen adaptativa' src/components/LockScreen.tsx 'deviceSecurityPresentation'
+          need 'Biometria somente após toque' src/components/LockScreen.tsx 'onClick={()=>void bio()}'
+          need 'Fallback por senha' src/components/LockScreen.tsx 'Usar senha'
+          need 'Configuração adaptativa' src/pages/SettingsPage.tsx 'securityAvailable'
+          need 'Senha permanece alternativa' src/pages/SettingsPage.tsx 'Sua senha continua disponível como alternativa de desbloqueio.'
+          need 'Ícone Face ID' src/ui/Icon.tsx 'faceId:'
+          need 'Ícone digital' src/ui/Icon.tsx 'fingerprint:'
+          test -s src/security.css
+          echo '✓ Experiência biométrica adaptativa pronta sem prompt automático.'
       - name: Contrato Worker e D1
         shell: bash
         run: |
