@@ -2,7 +2,7 @@ name: Ritmo Next architecture CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, ritmo-next-migration]
     paths:
       - "ritmo-next/**"
       - ".github/workflows/ritmo-next-ci.yml"
@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ritmo-next-architecture
+  group: ritmo-next-architecture-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     defaults:
       run:
         working-directory: ritmo-next
@@ -31,28 +31,97 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript
         run: npm run typecheck
-      - name: Build Vite
+      - name: Build Vite + Worker
         run: npm run build
-      - name: PWA e offline-first
+      - name: Paridade funcional essencial
+        shell: bash
         run: |
+          set -euo pipefail
+          need(){ local label="$1" file="$2" text="$3"; if grep -Fq "$text" "$file"; then echo "✓ $label"; else echo "✗ $label — ausente em $file" >&2; exit 1; fi; }
+          need 'Destino da entrada' src/components/FinancialSheet.tsx 'Destino da entrada'
+          need 'Pagar com' src/components/FinancialSheet.tsx 'Pagar com'
+          need 'Transferir para o casal' src/pages/SharingPage.tsx 'Transferir para o casal'
+          need 'Haver' src/components/FinancialSheet.tsx 'Haver'
+          need 'Relatório' src/pages/ReportPage.tsx 'Relatório'
+          need 'Gerar PDF' src/pages/ReportPage.tsx 'Gerar PDF'
+          need 'API de transferência' src/App.tsx '/api/wallet/transfers'
+          need 'Login' src/api/client.ts '/api/auth/login'
+          need 'Desbloqueio do aparelho' src/security/passkeys.ts '/api/webauthn'
+          need 'Perfis Pessoal/Casal' src/App.tsx 'ProfileSwitcher'
+          need 'Troca de perfil somente na Home' src/App.tsx "page==='home'&&<ProfileSwitcher"
+          PROFILE_SWITCHERS=$(grep -Rho '<ProfileSwitcher' src --include='*.tsx' | wc -l | tr -d ' ')
+          test "$PROFILE_SWITCHERS" = "1" || { echo "✗ seletor Pessoal/Casal duplicado fora da Home" >&2; exit 1; }
+          if grep -Fq 'financialPages.has(page)&&<ProfileSwitcher' src/App.tsx; then echo '✗ seletor de perfil reapareceu em páginas internas' >&2; exit 1; fi
+          if MATCHES="$(grep -Rin -i 'extrato' src || true)" && [ -n "$MATCHES" ]; then printf '%s\n' "$MATCHES"; echo '✗ nomenclatura antiga encontrada' >&2; exit 1; fi
+          echo '✓ nomenclatura somente Relatório'
+      - name: Face ID biometria e fallback por aparelho
+        shell: bash
+        run: |
+          set -euo pipefail
+          need(){ local label="$1" file="$2" text="$3"; grep -Fq "$text" "$file" || { echo "✗ $label" >&2; exit 1; }; echo "✓ $label"; }
+          need 'Face ID / Touch ID no iPhone e iPad' src/security/passkeys.ts 'Face ID / Touch ID'
+          need 'Biometria no Android' src/security/passkeys.ts 'Biometria do aparelho'
+          need 'Windows Hello' src/security/passkeys.ts 'Windows Hello'
+          need 'Touch ID no Mac' src/security/passkeys.ts "label:'Touch ID'"
+          need 'Autenticador local obrigatório' src/security/passkeys.ts "authenticatorAttachment:'platform'"
+          need 'Verificação do usuário obrigatória' src/security/passkeys.ts "userVerification:'required'"
+          need 'Disponibilidade do autenticador local' src/security/passkeys.ts 'isUserVerifyingPlatformAuthenticatorAvailable'
+          need 'Cancelamento com mensagem humana' src/security/passkeys.ts "name === 'NotAllowedError'"
+          need 'Lock screen adaptativa' src/components/LockScreen.tsx 'deviceSecurityPresentation'
+          need 'Biometria somente após toque' src/components/LockScreen.tsx 'onClick={()=>void bio()}'
+          need 'Fallback por senha' src/components/LockScreen.tsx 'Usar senha'
+          need 'Configuração adaptativa' src/pages/SettingsPage.tsx 'securityAvailable'
+          need 'Senha permanece alternativa' src/pages/SettingsPage.tsx 'Sua senha continua disponível como alternativa de desbloqueio.'
+          need 'Ícone Face ID' src/ui/Icon.tsx 'faceId:'
+          need 'Ícone digital' src/ui/Icon.tsx 'fingerprint:'
+          test -s src/security.css
+          echo '✓ Experiência biométrica adaptativa pronta sem prompt automático.'
+      - name: Contrato Worker e D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check worker/current-worker.js
+          node --check dist/_worker.js
+          test -s dist/version.json
+          cmp -s worker/current-worker.js dist/_worker.js
+          rm -f /tmp/ritmo-next-schema.db
+          sqlite3 /tmp/ritmo-next-schema.db < worker/schema-current.sql
+          grep -Fq '/api/bootstrap' dist/_worker.js
+          grep -Fq '/api/wallet/transfers' dist/_worker.js
+          grep -Fq '/api/wallet/report' dist/_worker.js
+          grep -Fq '@simplewebauthn/server' dist/_worker.js
+          grep -Fq 'audit_log' worker/schema-current.sql
+          grep -Fq 'wallet_transactions' worker/schema-current.sql
+          grep -Fq 'partnership_members' worker/schema-current.sql
+          echo '✓ Worker, dependência WebAuthn e schema D1 prontos para Pages.'
+      - name: PWA e offline-first
+        shell: bash
+        run: |
+          set -euo pipefail
           test -s dist/index.html
           test -s dist/manifest.webmanifest
           test -s dist/sw.js
           grep -Fq 'display' dist/manifest.webmanifest
-          grep -Fq "IndexedDB" src/offline/db.ts || true
-          grep -Fq "indexedDB.open" src/offline/db.ts
+          grep -Fq 'indexedDB.open' src/offline/db.ts
           grep -Fq "url.pathname.startsWith('/api/')" public/sw.js
-          ! grep -R "setInterval" src
+          grep -Fq 'clearFinancialCache' src/offline/db.ts
+          if grep -R "setInterval" src; then echo 'setInterval proibido' >&2; exit 1; fi
+          echo '✓ PWA e IndexedDB offline-first'
+      - name: Auditoria UI/UX em navegador
+        run: npm run audit
       - name: Orçamento de bundle
         run: |
           BYTES=$(find dist/assets -type f \( -name '*.js' -o -name '*.css' \) -printf '%s\n' | awk '{s+=$1} END {print s+0}')
           echo "Bundle JS+CSS: ${BYTES} bytes"
           test "$BYTES" -le 450000
       - name: Política de baixo consumo
+        shell: bash
         run: |
+          set -euo pipefail
           grep -Fq 'ACTIVE_FRESH_MS' src/sync/engine.ts
           grep -Fq 'PREFETCH_FRESH_MS' src/sync/engine.ts
           grep -Fq 'MAX_MUTATION_ATTEMPTS' src/sync/engine.ts
-          ! grep -R "poll" src/sync
-          ! grep -R "setInterval" src/sync
-          echo 'Ritmo Next aprovado sem chamadas Cloudflare no CI.'
+          if grep -R -i "poll" src/sync; then echo 'polling proibido' >&2; exit 1; fi
+          if grep -R "setInterval" src/sync; then echo 'setInterval proibido' >&2; exit 1; fi
+          if grep -R "fetch('/api/version" src; then echo 'consulta repetitiva de versão proibida' >&2; exit 1; fi
+          echo '✓ Ritmo Next aprovado sem chamadas Cloudflare no CI.'

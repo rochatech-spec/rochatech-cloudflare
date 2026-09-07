@@ -1,0 +1,91 @@
+name: Ritmo Next backend snapshot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ritmo-next-migration]
+    paths:
+      - ".github/workflows/ritmo-next-backend-snapshot.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ritmo-next-backend-snapshot
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ritmo-next-migration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Preparar processamento visual
+        run: python3 -m pip install --quiet pillow
+      - name: Montar backend validado atual
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ritmo-snapshot && mkdir -p /tmp/ritmo-snapshot
+          cat ritmo-v5/part-* > /tmp/ritmo-base.b64
+          base64 -d /tmp/ritmo-base.b64 > /tmp/ritmo-base.tgz
+          tar -xzf /tmp/ritmo-base.tgz -C /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v6_backend.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v6_ui.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v7_ux_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_update_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_device_security_ux.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_brand_menu_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_fix_sharing_runner.py
+          python3 .github/scripts/ritmo_v1_sharing_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_ios_organization_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_avatar_cloud_fallback.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_welcome_install_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_ios_system_polish.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_mobile_safearea_fix.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_action_sheet_icon_polish.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_install_handoff_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_theme_icons_drag_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_compact_ios_cards_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_native_resilience_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_financial_intelligence_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_native_lock_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_native_sheet_motion_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_premium_lock_screen_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_couple_spaces_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_debt_av_sync_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_goal_strategy_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_native_biometric_flow_patch.py /tmp/ritmo-snapshot
+          python3 .github/scripts/ritmo_v1_auth_platform_cleanup_patch.py /tmp/ritmo-snapshot
+          node --check /tmp/ritmo-snapshot/_worker.js
+          sqlite3 /tmp/ritmo-snapshot/test.db < /tmp/ritmo-snapshot/schema.sql
+      - name: Salvar contrato do backend na nova arquitetura
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ritmo-next/worker
+          cp /tmp/ritmo-snapshot/_worker.js ritmo-next/worker/current-worker.js
+          cp /tmp/ritmo-snapshot/schema.sql ritmo-next/worker/schema-current.sql
+          cp /tmp/ritmo-snapshot/package.json ritmo-next/worker/legacy-package.json
+          cp /tmp/ritmo-snapshot/build.mjs ritmo-next/worker/legacy-build.mjs
+          cat > ritmo-next/worker/SNAPSHOT.md <<'EOF'
+          # Backend compatibility snapshot
+
+          Arquivos gerados automaticamente a partir da mesma cadeia de patches validada da produção.
+          Não fazem chamada à Cloudflare. Servem como contrato de migração para o frontend React/TypeScript e para a reorganização do Worker.
+          EOF
+      - name: Commit do snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ritmo-next/worker/current-worker.js ritmo-next/worker/schema-current.sql ritmo-next/worker/legacy-package.json ritmo-next/worker/legacy-build.mjs ritmo-next/worker/SNAPSHOT.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Ritmo Next: snapshot completo do backend atual"
+          git push origin HEAD:ritmo-next-migration

@@ -1,0 +1,14 @@
+{
+  "name": "ritmo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build.mjs && node ci-browser-smoke.mjs && node ci-commercial-audit.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.33.1"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^14.0.1"
+  }
+}
