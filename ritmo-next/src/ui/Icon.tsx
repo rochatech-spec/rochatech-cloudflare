@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-export type IconName = 'home' | 'movements' | 'debt' | 'goal' | 'menu' | 'report' | 'users' | 'user' | 'plus' | 'arrowUp' | 'arrowDown' | 'calendar' | 'spark' | 'settings' | 'logout' | 'edit' | 'trash' | 'chevron' | 'transfer' | 'wallet' | 'bell' | 'check' | 'close' | 'shield'
+export type IconName = 'home' | 'movements' | 'debt' | 'goal' | 'menu' | 'report' | 'users' | 'user' | 'plus' | 'arrowUp' | 'arrowDown' | 'calendar' | 'spark' | 'settings' | 'logout' | 'edit' | 'trash' | 'chevron' | 'transfer' | 'wallet' | 'bell' | 'check' | 'close' | 'shield' | 'faceId' | 'fingerprint'
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9 20v-6h6v6"/></>,
@@ -27,6 +27,8 @@ const paths: Record<IconName, React.ReactNode> = {
   check: <path d="m5 12 4 4L19 6"/>,
   close: <path d="m6 6 12 12M18 6 6 18"/>,
   shield: <><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z"/><path d="m9 12 2 2 4-4"/></>,
+  faceId: <><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M9 9h.01M15 9h.01M9 15c1.7 1.3 4.3 1.3 6 0M12 10.5v2"/></>,
+  fingerprint: <><path d="M7.5 9.5A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 4.5 3M6.3 13c.1-3.2 2.2-5.2 5.7-5.2s5.6 2 5.7 5.2"/><path d="M8.2 13.3c.1-2.4 1.4-3.7 3.8-3.7s3.7 1.3 3.8 3.7c.1 2.6-.5 5-1.6 7M10.1 13.5c0-1.3.6-2 1.9-2s1.9.7 1.9 2c0 3-.5 5.3-1.5 7.5M6.2 16.2c.3 1.8.8 3.2 1.6 4.3"/></>,
 }
 
 export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {
