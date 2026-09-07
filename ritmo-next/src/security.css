@@ -4,10 +4,11 @@
 .setting-icon.biometric{background:var(--blue-soft);color:var(--teal)}
 .biometric-setting .security-row>div{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
 .biometric-setting .security-row small{line-height:1.4}
+.biometric-setting .security-row>button{flex:0 0 auto;min-width:72px;min-height:34px;padding:0 12px;border-radius:11px;font-size:8.7px;box-shadow:none}
 .security-state{display:inline-flex;align-items:center;min-height:20px;padding:0 8px;margin-top:3px;border-radius:999px;background:var(--surface-2);color:var(--muted);font-size:7.8px;font-style:normal;font-weight:800;letter-spacing:.02em}
 .security-state.active{background:var(--sage-soft);color:var(--sage)}
 .security-fallback{display:flex;align-items:center;gap:7px;margin:10px 0 14px;padding:9px 10px;border-radius:13px;background:var(--surface-2);color:var(--muted);font-size:8.5px;line-height:1.35}
 .security-fallback svg{width:15px;height:15px;flex:0 0 auto;color:var(--teal)}
 .lock-card .biometric-button{min-height:48px}
 .lock-card .biometric-alt{min-height:38px}
-@media(max-width:560px){.biometric-setting .security-row{align-items:stretch;gap:10px}.biometric-setting .security-row>button{width:100%;min-height:44px}.lock-card .biometric-button{min-height:50px}}
+@media(max-width:560px){.biometric-setting .security-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}.biometric-setting .security-row>button{width:auto;min-width:70px;min-height:34px;padding:0 11px;align-self:center}.lock-card .biometric-button{min-height:50px}}
