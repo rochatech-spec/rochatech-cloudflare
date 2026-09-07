@@ -11,45 +11,73 @@ let flushing = false
 const now = () => Date.now()
 const mutationId = () => `${now().toString(36)}-${crypto.randomUUID()}`
 
-function rememberOwner(data: BootstrapData) {
+function cacheSnapshotInBackground(scope: FinancialScope, data: BootstrapData) {
   const known = localStorage.getItem('ritmo:cache-owner')
-  if (known && known !== data.profile.id) void clearScopeSnapshots()
+  const ownerChanged = Boolean(known && known !== data.profile.id)
   localStorage.setItem('ritmo:cache-owner', data.profile.id)
+  const snapshot = { key: scope, data, savedAt: now(), version: 1 as const }
+  void (async () => {
+    try {
+      if (ownerChanged) await clearScopeSnapshots()
+      await saveScopeSnapshot(snapshot)
+    } catch {
+      // O cache é uma otimização: nunca pode impedir a abertura ou uso online do Ritmo.
+    }
+  })()
 }
 
 async function fetchAndCache(scope: FinancialScope): Promise<BootstrapData> {
   const existing = inflight.get(scope)
   if (existing) return existing
-  const request = fetchBootstrap(scope).then(async (data) => {
-    rememberOwner(data)
-    await saveScopeSnapshot({ key: scope, data, savedAt: now(), version: 1 })
+  const request = fetchBootstrap(scope).then((data) => {
+    cacheSnapshotInBackground(scope, data)
     return data
   }).finally(() => inflight.delete(scope))
   inflight.set(scope, request)
   return request
 }
 
-export async function loadScope(scope: FinancialScope, options: { forceNetwork?: boolean } = {}): Promise<{ data: BootstrapData; source: 'cache' | 'network'; stale: boolean }> {
-  let cached = await getScopeSnapshot(scope)
-  const expectedOwner = localStorage.getItem('ritmo:cache-owner')
-  if (cached && expectedOwner && cached.data.profile.id !== expectedOwner) { await clearScopeSnapshots(); cached = null }
-  const online = navigator.onLine
-  const fresh = cached ? now() - cached.savedAt < ACTIVE_FRESH_MS : false
-  if (cached && !options.forceNetwork) {
-    if (online && !fresh) void fetchAndCache(scope)
-    return { data: cached.data, source: 'cache', stale: !fresh }
+async function safeCachedScope(scope: FinancialScope) {
+  try {
+    let cached = await getScopeSnapshot(scope)
+    const expectedOwner = localStorage.getItem('ritmo:cache-owner')
+    if (cached && expectedOwner && cached.data.profile.id !== expectedOwner) {
+      await clearScopeSnapshots()
+      cached = null
+    }
+    return cached
+  } catch {
+    return null
   }
-  if (online) {
+}
+
+export async function loadScope(scope: FinancialScope, options: { forceNetwork?: boolean } = {}): Promise<{ data: BootstrapData; source: 'cache' | 'network'; stale: boolean }> {
+  const online = navigator.onLine
+
+  // Na abertura/atualização explícita, rede e UI não esperam IndexedDB.
+  if (online && options.forceNetwork) {
     try {
       const data = await fetchAndCache(scope)
       return { data, source: 'network', stale: false }
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) throw error
-      if (cached) return { data: cached.data, source: 'cache', stale: true }
+      const fallback = await safeCachedScope(scope)
+      if (fallback) return { data: fallback.data, source: 'cache', stale: true }
       throw error
     }
   }
-  if (cached) return { data: cached.data, source: 'cache', stale: true }
+
+  const cached = await safeCachedScope(scope)
+  const fresh = cached ? now() - cached.savedAt < ACTIVE_FRESH_MS : false
+  if (cached) {
+    if (online && !fresh) void fetchAndCache(scope)
+    return { data: cached.data, source: 'cache', stale: !fresh }
+  }
+
+  if (online) {
+    const data = await fetchAndCache(scope)
+    return { data, source: 'network', stale: false }
+  }
   throw new Error('Abra o Ritmo uma vez com internet para preparar o acesso offline.')
 }
 
@@ -59,7 +87,7 @@ export async function invalidateFinancialCache() { await clearScopeSnapshots(); 
 export async function prefetchOtherScope(scope: FinancialScope): Promise<void> {
   if (!navigator.onLine) return
   const other: FinancialScope = scope === 'personal' ? 'shared' : 'personal'
-  const cached = await getScopeSnapshot(other)
+  const cached = await safeCachedScope(other)
   if (cached && now() - cached.savedAt < PREFETCH_FRESH_MS) return
   const run = () => void fetchAndCache(other).catch(() => undefined)
   const idle = (window as Window & { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number }).requestIdleCallback
