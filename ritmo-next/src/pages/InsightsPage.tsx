@@ -5,12 +5,13 @@ import { Icon } from '../ui/Icon'
 
 export function InsightsPage({ data }: { data: BootstrapData }) {
   const insights = useMemo(()=>{
-    const paid = data.expenses.filter((x)=>x.status==='pago')
+    const cutoff=(data.server_time||new Date().toISOString()).slice(0,10)
+    const paid = data.expenses.filter((x)=>x.status==='pago'&&x.date<=cutoff)
     const totalOut = paid.reduce((s,x)=>s+x.amount,0)
-    const totalIn = data.incomes.reduce((s,x)=>s+x.amount,0)
+    const totalIn = data.incomes.filter((x)=>x.date<=cutoff).reduce((s,x)=>s+x.amount,0)
     const categories = paid.reduce<Record<string,number>>((acc,x)=>{acc[x.category]=(acc[x.category]||0)+x.amount;return acc},{})
     const top = Object.entries(categories).sort((a,b)=>b[1]-a[1])[0]
-    const pending = data.expenses.filter((x)=>x.status!=='pago').reduce((s,x)=>s+x.amount,0)
+    const pending = data.expenses.filter((x)=>!(x.status==='pago'&&x.date<=cutoff)).reduce((s,x)=>s+x.amount,0)
     const debt = data.debts.reduce((s,x)=>s+Number(x.balance??x.total_amount),0)
     const goals = data.goals.reduce((s,x)=>s+Math.max(0,x.target_amount-Number(x.current_amount||0)),0)
     const saving = totalIn-totalOut
