@@ -31,7 +31,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript
         run: npm run typecheck
-      - name: Build Vite
+      - name: Build Vite + Worker
         run: npm run build
       - name: Paridade funcional essencial
         shell: bash
@@ -59,15 +59,19 @@ jobs:
         run: |
           set -euo pipefail
           node --check worker/current-worker.js
+          node --check dist/_worker.js
+          test -s dist/version.json
+          cmp -s worker/current-worker.js dist/_worker.js
           rm -f /tmp/ritmo-next-schema.db
           sqlite3 /tmp/ritmo-next-schema.db < worker/schema-current.sql
-          grep -Fq '/api/bootstrap' worker/current-worker.js
-          grep -Fq '/api/wallet/transfers' worker/current-worker.js
-          grep -Fq '/api/wallet/report' worker/current-worker.js
+          grep -Fq '/api/bootstrap' dist/_worker.js
+          grep -Fq '/api/wallet/transfers' dist/_worker.js
+          grep -Fq '/api/wallet/report' dist/_worker.js
+          grep -Fq '@simplewebauthn/server' dist/_worker.js
           grep -Fq 'audit_log' worker/schema-current.sql
           grep -Fq 'wallet_transactions' worker/schema-current.sql
           grep -Fq 'partnership_members' worker/schema-current.sql
-          echo '✓ Worker e schema D1 compatíveis com a versão atual.'
+          echo '✓ Worker, dependência WebAuthn e schema D1 prontos para Pages.'
       - name: PWA e offline-first
         shell: bash
         run: |
@@ -82,7 +86,7 @@ jobs:
           if grep -R "setInterval" src; then echo 'setInterval proibido' >&2; exit 1; fi
           echo '✓ PWA e IndexedDB offline-first'
       - name: Auditoria UI/UX em navegador
-        run: node ci-browser-audit.mjs
+        run: npm run audit
       - name: Orçamento de bundle
         run: |
           BYTES=$(find dist/assets -type f \( -name '*.js' -o -name '*.css' \) -printf '%s\n' | awk '{s+=$1} END {print s+0}')
