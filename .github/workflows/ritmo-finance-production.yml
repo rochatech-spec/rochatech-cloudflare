@@ -48,13 +48,85 @@ jobs:
           grep -q 'standalone' dist/manifest.json
           node --check dist/_worker.js
 
-      - name: Validar acesso Cloudflare
+      - name: Iniciar autorização Cloudflare
+        id: cfauth
+        shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'CLOUDFLARE_API_TOKEN ausente'; exit 2; }
-          npx --yes wrangler@latest whoami
+          LOG="$GITHUB_WORKSPACE/ritmo-finance/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/ritmo-finance/cloudflare-device-login.pid"
+          rm -f "$LOG" "$PID"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "mode=token" >> "$GITHUB_OUTPUT"
+            echo "Credencial de CI encontrada." > "$LOG"
+            exit 0
+          fi
+          echo "mode=device" >> "$GITHUB_OUTPUT"
+          echo "Iniciando autorização Cloudflare por dispositivo..." > "$LOG"
+          (
+            unset RUNNER_TRACKING_ID
+            nohup npx --yes wrangler@latest login --device --browser=false >> "$LOG" 2>&1 &
+            echo $! > "$PID"
+          )
+          for i in {1..45}; do
+            if grep -q 'dash.cloudflare.com/oauth2/device' "$LOG"; then
+              cat "$LOG"
+              exit 0
+            fi
+            if [ -f "$PID" ] && ! kill -0 "$(cat "$PID")" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Disponibilizar autorização Cloudflare
+        if: steps.cfauth.outputs.mode == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-finance-cloudflare-authorization
+          path: ritmo-finance/cloudflare-device-login.txt
+          retention-days: 1
+
+      - name: Aguardar autorização Cloudflare
+        if: steps.cfauth.outputs.mode == 'device'
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/ritmo-finance/cloudflare-device-login.txt"
+          PID="$GITHUB_WORKSPACE/ritmo-finance/cloudflare-device-login.pid"
+          P="$(cat "$PID")"
+          for i in {1..300}; do
+            if npx --yes wrangler@latest whoami --json >/tmp/whoami.json 2>/dev/null; then
+              echo "Cloudflare autorizado com sucesso."
+              exit 0
+            fi
+            if ! kill -0 "$P" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Identificar conta Cloudflare
+        id: account
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest whoami --json > /tmp/whoami.json
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Provisionar D1, R2 e gerar configuração
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: |
           set -euo pipefail
           npx --yes wrangler@latest d1 list --json > /tmp/d1.json
@@ -73,6 +145,8 @@ jobs:
           npx --yes wrangler@latest d1 execute ritmo-finance-db --remote --file=./schema.sql --config wrangler.deploy.toml
 
       - name: Garantir projeto Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: |
           set -euo pipefail
           if ! npx --yes wrangler@latest pages deployment list --project-name ritmo-finance-br >/tmp/pages.txt 2>&1; then
@@ -80,6 +154,8 @@ jobs:
           fi
 
       - name: Publicar PWA
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: |
           set -euo pipefail
           npx --yes wrangler@latest pages deploy dist \
