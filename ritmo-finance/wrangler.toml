@@ -1,0 +1,16 @@
+name = "ritmo-finance-br"
+compatibility_date = "2026-09-09"
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ritmo-finance-db"
+database_id = "__D1_DATABASE_ID__"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "ritmo-finance-files"
+
+[vars]
+APP_NAME = "Ritmo Finance"
+SESSION_TTL_DAYS = "30"
