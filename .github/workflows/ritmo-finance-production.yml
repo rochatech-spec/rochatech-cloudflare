@@ -1,0 +1,109 @@
+name: Publicar Ritmo Finance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ritmo-finance/**"
+      - ".github/workflows/ritmo-finance-production.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-finance-production
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      NO_COLOR: "1"
+    defaults:
+      run:
+        working-directory: ritmo-finance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Testar e compilar
+        run: |
+          set -euo pipefail
+          npm test
+          npm run build
+          test -s dist/index.html
+          test -s dist/_worker.js
+          test -s dist/manifest.json
+          test -s dist/sw.js
+          test -s dist/assets/icon-192.png
+          test -s dist/assets/icon-512.png
+          grep -q 'standalone' dist/manifest.json
+          node --check dist/_worker.js
+
+      - name: Validar acesso Cloudflare
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'CLOUDFLARE_API_TOKEN ausente'; exit 2; }
+          npx --yes wrangler@latest whoami
+
+      - name: Provisionar D1, R2 e gerar configuração
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest d1 list --json > /tmp/d1.json
+          DB_ID="$(node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));const d=a.find(x=>x.name==='ritmo-finance-db');if(d)process.stdout.write(d.uuid||d.id||'')")"
+          if [ -z "$DB_ID" ]; then
+            npx --yes wrangler@latest d1 create ritmo-finance-db > /tmp/d1-create.txt 2>&1
+            cat /tmp/d1-create.txt
+            DB_ID="$(grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/d1-create.txt | head -1)"
+          fi
+          test -n "$DB_ID"
+          sed "s/__D1_DATABASE_ID__/$DB_ID/g" wrangler.toml > wrangler.deploy.toml
+          if ! npx --yes wrangler@latest r2 bucket create ritmo-finance-files > /tmp/r2.txt 2>&1; then
+            cat /tmp/r2.txt
+            grep -Eqi 'already|exist' /tmp/r2.txt || exit 1
+          fi
+          npx --yes wrangler@latest d1 execute ritmo-finance-db --remote --file=./schema.sql --config wrangler.deploy.toml
+
+      - name: Garantir projeto Pages
+        run: |
+          set -euo pipefail
+          if ! npx --yes wrangler@latest pages deployment list --project-name ritmo-finance-br >/tmp/pages.txt 2>&1; then
+            npx --yes wrangler@latest pages project create ritmo-finance-br --production-branch main
+          fi
+
+      - name: Publicar PWA
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest pages deploy dist \
+            --project-name ritmo-finance-br \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-dirty=true \
+            --config wrangler.deploy.toml
+
+      - name: Validar produção
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          BASE='https://ritmo-finance-br.pages.dev'
+          OK=0
+          for i in {1..36}; do
+            IDX=$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_SHA" || true)
+            HLT=$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?release=$GITHUB_SHA" || true)
+            MAN=$(curl -sS -o /tmp/manifest.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/manifest.json?release=$GITHUB_SHA" || true)
+            SW=$(curl -sS -o /tmp/sw.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/sw.js?release=$GITHUB_SHA" || true)
+            I192=$(curl -sS -o /tmp/icon192.png -w '%{http_code}' "$BASE/assets/icon-192.png?release=$GITHUB_SHA" || true)
+            I512=$(curl -sS -o /tmp/icon512.png -w '%{http_code}' "$BASE/assets/icon-512.png?release=$GITHUB_SHA" || true)
+            if [ "$IDX" = 200 ] && [ "$HLT" = 200 ] && [ "$MAN" = 200 ] && [ "$SW" = 200 ] && [ "$I192" = 200 ] && [ "$I512" = 200 ] && grep -q '"ok":true' /tmp/health.json && grep -q 'standalone' /tmp/manifest.json; then OK=1; break; fi
+            sleep 5
+          done
+          test "$OK" = 1
+          echo "Ritmo Finance publicado e validado em $BASE"
