@@ -1,0 +1,23 @@
+{
+  "name": "Ritmo Finance",
+  "short_name": "Ritmo",
+  "description": "Gestão financeira pessoal e compartilhada no seu ritmo.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f4f8f8",
+  "theme_color": "#00616c",
+  "lang": "pt-BR",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Movimentações", "short_name": "Movimentos", "url": "/?page=movements", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Metas", "short_name": "Metas", "url": "/?page=goals", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
