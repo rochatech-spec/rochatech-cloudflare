@@ -55,7 +55,7 @@ export async function persistAuth(auth: AuthResponse) {
 
 export const api = {
   session: () => request<{ authenticated: boolean; user?: AuthUser }>('/auth/session'),
-  register: (body: { username: string; password: string }) => request<RegistrationResponse>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+  register: (body: { displayName: string; password: string }) => request<RegistrationResponse>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   confirmRegistration: (activationToken: string) => request<AuthResponse>('/auth/register/confirm', { method: 'POST', body: JSON.stringify({ activationToken }) }),
   login: (body: { username: string; password: string }) => request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   authorizeDevice: (body: { verificationId: string; recoveryCode: string }) => request<AuthResponse>('/auth/device/verify', { method: 'POST', body: JSON.stringify(body) }),
