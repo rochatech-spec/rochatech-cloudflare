@@ -202,5 +202,5 @@ export async function installPWA() {
 export function canInstallPWA() { return !isNativeApp() && Boolean(deferredInstallPrompt); }
 export function subscribePWAInstallAvailability(listener: () => void) {
   installListeners.add(listener);
-  return () => installListeners.delete(listener);
+  return () => { installListeners.delete(listener); };
 }
