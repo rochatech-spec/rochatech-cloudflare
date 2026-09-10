@@ -44,6 +44,8 @@ export default function App() {
   const [toastState,setToastState]=useState({open:false,message:''});
   const [txFilter,setTxFilter]=useState<'all'|'income'|'expense'>('all');
   const [txSearch,setTxSearch]=useState('');
+  const [txDateFrom,setTxDateFrom]=useState('');
+  const [txDateTo,setTxDateTo]=useState('');
   const [calendarCursor,setCalendarCursor]=useState(()=>new Date());
   const [selectedDate,setSelectedDate]=useState(()=>new Date());
   const toastTimer=useRef<number|undefined>(undefined);
@@ -215,7 +217,14 @@ export default function App() {
     const name=profile.displayName||'Conta',ini=initials(name);setText('accountAvatar',ini);setText('profileAvatar',ini);setText('accountName',name);setText('profileName',name);setText('profileUser',profile.username?'@'+profile.username:'@usuario');
     setText('profileIncome',money(totals.inc));setText('profileExpense',money(totals.exp));setText('profileBalance',money(totals.bal));setText('profileScore',transactions.length?`${Math.round(totals.rate)}%`:'—');document.getElementById('profileDonut')?.style.setProperty('--score',String(Math.round(totals.rate)));setText('profileStorage','Cloudflare D1 • sincronizado');setText('profileNotifications',(profile.dueNotifications||profile.goalNotifications)?'Ativas':'Desativadas');
 
-    const filterData=transactions.filter(t=>(txFilter==='all'||(txFilter==='income'&&t.value>0)||(txFilter==='expense'&&t.value<0))&&(!txSearch||`${t.desc} ${t.cat}`.toLowerCase().includes(txSearch.toLowerCase()))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const normalizedSearch=txSearch.trim().toLowerCase();
+    const filterData=transactions.filter(t=>{
+      const matchesType=txFilter==='all'||(txFilter==='income'&&t.value>0)||(txFilter==='expense'&&t.value<0);
+      const matchesSearch=!normalizedSearch||`${t.desc} ${t.cat} ${t.type} ${t.status==='pending'?'pendente':'efetivada'}`.toLowerCase().includes(normalizedSearch);
+      const matchesFrom=!txDateFrom||String(t.date)>=txDateFrom;
+      const matchesTo=!txDateTo||String(t.date)<=txDateTo;
+      return matchesType&&matchesSearch&&matchesFrom&&matchesTo;
+    }).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
     const txTable=document.getElementById('txTable'),txMobile=document.getElementById('txMobile');
     if(txTable)txTable.innerHTML=filterData.length?filterData.map(t=>`<tr>
       <td>${fmtDate(t.date)}</td>
@@ -271,7 +280,7 @@ export default function App() {
     document.querySelectorAll<HTMLElement>('.nav-item[data-go],#bottomNav button[data-go]').forEach(b=>b.classList.toggle('active',b.dataset.go===currentPage));setText('miniTitle',titles[currentPage]);
     document.querySelectorAll<HTMLElement>('.switch').forEach(sw=>{const enabled=sw.dataset.setting==='due'?Boolean(profile.dueNotifications):Boolean(profile.goalNotifications);sw.classList.toggle('on',enabled);});
     requestAnimationFrame(()=>{try{createIcons({icons});}catch{}});
-  },[transactions,debts,goals,events,profile,totals,txFilter,txSearch,calendarCursor,selectedDate,currentPage,last12,modal,authView,recoveryCode,sheetOpen]);
+  },[transactions,debts,goals,events,profile,totals,txFilter,txSearch,txDateFrom,txDateTo,calendarCursor,selectedDate,currentPage,last12,modal,authView,recoveryCode,sheetOpen]);
 
   useEffect(()=>{const e=document.getElementById('recoveryCodeText');if(e)e.textContent=recoveryCode||'—';},[recoveryCode,authView]);
 
@@ -314,7 +323,13 @@ export default function App() {
     }
   }
 
-  const handleInput=(e:React.FormEvent<HTMLElement>)=>{const t=e.target as HTMLInputElement|HTMLSelectElement;if(!t.id)return;setField(t.id,t.value);if(t.id==='txSearch')setTxSearch(t.value);};
+  const handleInput=(e:React.FormEvent<HTMLElement>)=>{
+    const t=e.target as HTMLInputElement|HTMLSelectElement;if(!t.id)return;
+    setField(t.id,t.value);
+    if(t.id==='txSearch')setTxSearch(t.value);
+    if(t.id==='txDateFrom')setTxDateFrom(t.value);
+    if(t.id==='txDateTo')setTxDateTo(t.value);
+  };
   const navigate=(page:string)=>{if(page in titles){setCurrentPage(page as Page);setModal(null);setSheetOpen(false);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}};
 
   const handleAuthKeyDown=async(e:React.KeyboardEvent<HTMLElement>)=>{
@@ -330,7 +345,7 @@ export default function App() {
 
   const handleClick=async(e:React.MouseEvent<HTMLElement>)=>{
     const el=e.target as HTMLElement;const go=el.closest<HTMLElement>('[data-go]');if(go){navigate(go.dataset.go||'home');return;}const sg=el.closest<HTMLElement>('[data-search-go]');if(sg){navigate(sg.dataset.searchGo||'home');return;}const cal=el.closest<HTMLElement>('[data-cal-date]');if(cal){setSelectedDate(new Date(`${cal.dataset.calDate}T12:00:00`));return;}const button=el.closest<HTMLButtonElement>('button');if(!button)return;
-    if(button.dataset.filter){setTxFilter(button.dataset.filter as any);return;}if(button.dataset.themeChoice){const theme=button.dataset.themeChoice as Profile['theme'];setData(d=>({...d,profile:{...d.profile,theme}}));try{const p=await api.saveProfile({theme});setData(d=>({...d,profile:p}));notify('Tema atualizado.');}catch{}return;}
+    if(button.dataset.filter){setTxFilter(button.dataset.filter as any);return;}if(button.id==='clearTxFilters'){setTxFilter('all');setTxSearch('');setTxDateFrom('');setTxDateTo('');setForm(f=>({...f,txSearch:'',txDateFrom:'',txDateTo:''}));return;}if(button.dataset.themeChoice){const theme=button.dataset.themeChoice as Profile['theme'];setData(d=>({...d,profile:{...d.profile,theme}}));try{const p=await api.saveProfile({theme});setData(d=>({...d,profile:p}));notify('Tema atualizado.');}catch{}return;}
     if(button.classList.contains('switch')){const key=button.dataset.setting,patch=key==='due'?{dueNotifications:!profile.dueNotifications}:{goalNotifications:!profile.goalNotifications};setData(d=>({...d,profile:{...d.profile,...patch}}));try{const p=await api.saveProfile(patch);setData(d=>({...d,profile:p}));notify('Preferência atualizada.');}catch{}return;}
     switch(button.id){
       case 'loginBtn':await login();return;case 'firstAccessBtn':setGeneratedUsername('');setRecoveryCode('');setPendingActivationToken('');setAuthView('register');resetForm();return;case 'forgotBtn':setAuthView('recover');resetForm();return;case 'backLoginBtn':case 'backRecoveryBtn':setGeneratedUsername('');setRecoveryCode('');setPendingActivationToken('');setAuthView('login');resetForm();return;case 'createAccessBtn':await register();return;case 'recoverAccessBtn':await recover();return;case 'authorizeDeviceBtn':await authorizeDevice();return;case 'cancelDeviceBtn':setPendingDeviceVerification('');setAuthView('login');resetForm();return;
@@ -952,22 +967,30 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <div className='toolbar'>
+              <div className='toolbar tx-toolbar'>
                 <div className='seg' id='txFilter'>
-                  <button className='active' data-filter='all'>
-                    Todas
-                  </button>
-                  <button data-filter='income'>
-                    Receitas
-                  </button>
-                  <button data-filter='expense'>
-                    Despesas
-                  </button>
+                  <button className='active' data-filter='all'>Todas</button>
+                  <button data-filter='income'>Receitas</button>
+                  <button data-filter='expense'>Despesas</button>
                 </div>
-                <div className='search-field liquid-soft'>
+                <div className='tx-date-filters'>
+                  <label className='date-filter-field liquid-soft'>
+                    <span>De</span>
+                    <input id='txDateFrom' type='date' value={txDateFrom} onChange={e=>setTxDateFrom(e.target.value)} />
+                  </label>
+                  <label className='date-filter-field liquid-soft'>
+                    <span>Até</span>
+                    <input id='txDateTo' type='date' value={txDateTo} onChange={e=>setTxDateTo(e.target.value)} />
+                  </label>
+                </div>
+                <div className='search-field liquid-soft tx-search-field'>
                   <i data-lucide='search'></i>
-                  <input id='txSearch' placeholder='Buscar movimentação...' />
+                  <input id='txSearch' placeholder='Buscar por descrição, categoria ou status...' value={txSearch} onChange={e=>setTxSearch(e.target.value)} />
                 </div>
+                <button className='premium-btn btn-glass tx-clear-btn' id='clearTxFilters' title='Limpar filtros'>
+                  <i data-lucide='rotate-ccw'></i>
+                  <span>Limpar</span>
+                </button>
               </div>
               <div className='table-wrap liquid'>
                 <table className='table'>
