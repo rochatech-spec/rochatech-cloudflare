@@ -1,0 +1,39 @@
+name: Ritmo Commercial • Ajuste Web Push
+
+on:
+  push:
+    branches: [ritmo-commercial-bootstrap]
+    paths:
+      - ".github/workflows/ritmo-commercial-hotfix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Corrigir payload Web Push e versionar
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ritmo-commercial/src/worker.ts')
+          s = p.read_text()
+          old = "{title:'Ritmo',body:'Notificações ativadas com sucesso.',icon:'/pwa-192.svg',data:{url:'/'}}"
+          new = "{title:'Ritmo',body:'Notificações ativadas com sucesso.',url:'/',tag:'ritmo-notification'}"
+          if old not in s:
+              raise SystemExit('Trecho esperado do Web Push não encontrado')
+          p.write_text(s.replace(old, new, 1))
+          q = Path('ritmo-commercial/src/web-push-payload.ts')
+          if q.exists():
+              q.unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A ritmo-commercial/src
+          git diff --cached --check
+          git commit -m "fix(ritmo-commercial): compatibilizar Web Push tipado"
+          git push origin HEAD:ritmo-commercial-bootstrap
