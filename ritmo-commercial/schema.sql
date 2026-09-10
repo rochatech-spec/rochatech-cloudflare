@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   category TEXT NOT NULL,
   type TEXT NOT NULL CHECK(type IN ('Receita','Despesa')),
   value_cents INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('pending','posted')),
+  posted_at TEXT,
   icon TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -153,3 +155,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   PRIMARY KEY(user_id,idempotency_key,method,path)
 );
 CREATE INDEX IF NOT EXISTS idx_idempotency_created ON idempotency_keys(user_id,created_at);
+
+
+-- Migração idempotente aplicada pelo deploy: bases novas já possuem as colunas acima.
+-- Em bases existentes, o workflow executa estes ALTERs de forma tolerante antes do schema completo.
