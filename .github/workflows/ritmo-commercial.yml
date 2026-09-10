@@ -236,6 +236,11 @@ jobs:
             .replace('__FILES_KV_NAMESPACE_ID__',filesKv);
           fs.writeFileSync('wrangler.deploy.jsonc',src);
           NODE
+          # Migra bases já existentes antes de aplicar o schema completo.
+          # Os ALTERs podem retornar "duplicate column" em ambientes já migrados; isso é esperado.
+          npx wrangler d1 execute ritmo-commercial-db --remote --command="ALTER TABLE transactions ADD COLUMN status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('pending','posted'))" --config wrangler.deploy.jsonc || true
+          npx wrangler d1 execute ritmo-commercial-db --remote --command="ALTER TABLE transactions ADD COLUMN posted_at TEXT" --config wrangler.deploy.jsonc || true
+          npx wrangler d1 execute ritmo-commercial-db --remote --command="UPDATE transactions SET status='posted' WHERE status IS NULL OR status=''" --config wrangler.deploy.jsonc || true
           npx wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.deploy.jsonc
       - name: Garantir projeto Pages
         env:
