@@ -57,7 +57,23 @@ export const api = {
   session: () => request<{ authenticated: boolean; user?: AuthUser }>('/auth/session'),
   register: (body: { displayName: string; password: string }) => request<RegistrationResponse>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   confirmRegistration: (activationToken: string) => request<AuthResponse>('/auth/register/confirm', { method: 'POST', body: JSON.stringify({ activationToken }) }),
-  login: (body: { username: string; password: string }) => request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  login: async (body: { username: string; password: string }) => {
+    try {
+      return await request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) });
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 428 &&
+        error.details &&
+        typeof error.details === 'object' &&
+        (error.details as DeviceVerificationResponse).requiresDeviceVerification === true &&
+        typeof (error.details as DeviceVerificationResponse).verificationId === 'string'
+      ) {
+        return error.details as DeviceVerificationResponse;
+      }
+      throw error;
+    }
+  },
   authorizeDevice: (body: { verificationId: string; recoveryCode: string }) => request<AuthResponse>('/auth/device/verify', { method: 'POST', body: JSON.stringify(body) }),
   recover: (body: { username: string; recoveryCode: string; newPassword: string }) => request<AuthResponse>('/auth/recover', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
