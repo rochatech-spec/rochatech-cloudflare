@@ -133,9 +133,9 @@ export async function getCurrentPosition(options: PositionOptions = { enableHigh
     }
     if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('Permissão de localização não concedida.');
     return nativePosition({
-      enableHighAccuracy: options.enableHighAccuracy,
-      timeout: options.timeout,
-      maximumAge: options.maximumAge,
+      enableHighAccuracy: options.enableHighAccuracy ?? true,
+      timeout: options.timeout ?? 12000,
+      maximumAge: options.maximumAge ?? 60_000,
     });
   }
   if (!navigator.geolocation) throw new Error('Geolocalização indisponível.');
