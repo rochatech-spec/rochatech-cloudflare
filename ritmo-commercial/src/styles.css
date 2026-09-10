@@ -3151,3 +3151,44 @@ body.auth-active #loginPage{
 .sync-btn.syncing svg{animation:ritmoSyncSpin .8s linear infinite}
 .sync-btn:disabled{opacity:.72;cursor:wait}
 @keyframes ritmoSyncSpin{to{transform:rotate(360deg)}}
+
+
+/* Ritmo • username permanente */
+.immutable-username-box{
+  display:grid;
+  gap:5px;
+  padding:14px 16px;
+  border-radius:18px;
+  background:#EEF3F8;
+  border:1px solid rgba(10,31,68,.08);
+}
+.immutable-username-box>span{
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.immutable-username-box>strong{
+  font-size:15px;
+  line-height:1.25;
+  color:var(--text);
+  overflow-wrap:anywhere;
+}
+.immutable-username-box>small{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:9.5px;
+  line-height:1.4;
+  color:var(--muted);
+}
+.immutable-username-box>small svg{
+  width:13px;
+  height:13px;
+  flex:0 0 auto;
+}
+html[data-theme="dark"] .immutable-username-box{
+  background:#18263B;
+  border-color:rgba(255,255,255,.08);
+}
