@@ -11,6 +11,7 @@ const worker = read('src/worker.ts');
 const api = read('src/services/api.ts');
 const schema = read('schema.sql');
 const vite = read('vite.config.ts');
+const wrangler = read('wrangler.jsonc');
 const original = read('reference/ritmo_comercial_leve.html');
 
 const body = original.match(/<body[^>]*>([\s\S]*?)<script[\s>]/i)?.[1] || '';
@@ -72,3 +73,7 @@ assert(worker.includes("env.FILES_KV.get"), 'Download deve ler do Workers KV.');
 assert(worker.includes("env.FILES_KV.delete"), 'Exclusão deve remover do Workers KV.');
 assert(!worker.includes('R2Bucket'), 'R2 não deve ser obrigatório no Worker.');
 assert(wrangler.includes('"binding": "FILES_KV"'), 'wrangler.jsonc deve declarar FILES_KV.');
+
+assert(css.includes('RITMO • MOBILE TRUE CENTER FINAL'), 'Patch final de centralização mobile ausente.');
+assert(css.includes('box-sizing:border-box!important'), 'Modal mobile deve usar border-box.');
+assert(css.includes('place-items:center!important'), 'Overlay mobile deve centralizar pelo viewport.');
