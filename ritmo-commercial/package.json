@@ -1,0 +1,56 @@
+{
+  "name": "ritmo-cloudflare-pwa",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run check:static && tsc -b && vite build",
+    "preview": "vite preview",
+    "check:static": "node scripts/verify-project.mjs",
+    "worker:check": "wrangler pages functions build functions --outfile /tmp/ritmo-worker.js --minify",
+    "pages:dev": "wrangler pages dev dist --config wrangler.jsonc",
+    "pages:deploy": "wrangler pages deploy dist --config wrangler.jsonc",
+    "db:local": "wrangler d1 execute ritmo-commercial-db --local --file=./schema.sql --config wrangler.jsonc",
+    "db:remote": "wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.jsonc",
+    "vapid": "node scripts/generate-vapid.mjs",
+    "android:add": "cap add android",
+    "android:sync": "cap sync android",
+    "android:build": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
+    "worker:typecheck": "tsc -p tsconfig.worker.json",
+    "check": "npm run check:static && tsc -b && npm run worker:typecheck && npm run worker:check",
+    "prebuild": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "10.0.0",
+    "@aparajita/capacitor-secure-storage": "8.0.0",
+    "@capacitor/camera": "8.2.4",
+    "@capacitor/core": "8.5.1",
+    "@capacitor/geolocation": "8.2.2",
+    "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/share": "8.0.1",
+    "@mmmike/web-push": "1.3.0",
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.1",
+    "lucide": "1.43.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.5.1",
+    "@capacitor/cli": "8.5.1",
+    "@cloudflare/workers-types": "5.20260910.1",
+    "@types/node": "22.20.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "sharp": "0.35.4",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vite-plugin-pwa": "1.3.0",
+    "wrangler": "4.130.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

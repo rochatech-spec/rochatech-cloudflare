@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ritmo-commercial",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-09-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_ORIGIN": "https://ritmo-commercial.pages.dev",
+    "RP_ID": "ritmo-commercial.pages.dev",
+    "RP_NAME": "Ritmo",
+    "VAPID_SUBJECT": "https://ritmo-commercial.pages.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ritmo-commercial-db",
+      "database_id": "__D1_DATABASE_ID__",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSION_KV",
+      "id": "__KV_NAMESPACE_ID__"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "ritmo-commercial-files"
+    }
+  ]
+}
