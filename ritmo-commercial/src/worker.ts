@@ -1,3 +1,4 @@
+import { scrypt } from 'node:crypto';
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -48,9 +49,13 @@ async function hmac(value:string, secret:string) {
   return b64url(await crypto.subtle.sign('HMAC',key,enc.encode(value)));
 }
 async function hashPassword(password:string, salt = randomToken(16)) {
-  const key=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveBits']);
-  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:fromB64url(salt),iterations:310_000},key,256);
-  return { salt, hash:b64url(bits) };
+  const derived = await new Promise<Uint8Array>((resolve,reject) => {
+    scrypt(password, fromB64url(salt), 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err,key) => {
+      if (err) return reject(err);
+      resolve(new Uint8Array(key));
+    });
+  });
+  return { salt, hash:b64url(derived) };
 }
 async function safeEqual(a:string,b:string) {
   const aa=enc.encode(a),bb=enc.encode(b); if (aa.length!==bb.length) return false;
