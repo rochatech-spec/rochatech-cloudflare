@@ -1,0 +1,81 @@
+name: Ritmo Commercial • Android APK
+
+on:
+  push:
+    branches: [ritmo-commercial-bootstrap]
+    paths:
+      - ".github/workflows/ritmo-commercial-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Capacitor Android + APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: ritmo-commercial
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Preparar Android SDK
+        run: yes | sdkmanager --licenses >/dev/null || true
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Validar e compilar frontend do APK
+        env:
+          VITE_API_URL: https://ritmo-commercial.pages.dev/api
+        run: |
+          set -euo pipefail
+          npm run check
+          npm run build
+      - name: Criar projeto Capacitor Android
+        run: |
+          set -euo pipefail
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+          test -s android/gradlew
+          test -s android/app/build.gradle
+      - name: Versionar projeto Android nativo
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ritmo-commercial/android
+          if ! git diff --cached --quiet; then
+            git commit -m "feat(ritmo-commercial): adicionar projeto Capacitor Android"
+            git push origin HEAD:ritmo-commercial-bootstrap
+          fi
+      - name: Compilar APK debug instalável
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../Ritmo-Android.apk
+          cd ..
+          sha256sum Ritmo-Android.apk | tee Ritmo-Android.apk.sha256
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ritmo-Android-APK
+          path: |
+            ritmo-commercial/Ritmo-Android.apk
+            ritmo-commercial/Ritmo-Android.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
