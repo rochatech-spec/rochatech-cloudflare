@@ -458,70 +458,503 @@ export default function App() {
   };
 
   const handleClick=async(e:React.MouseEvent<HTMLElement>)=>{
-    const el=e.target as HTMLElement;const go=el.closest<HTMLElement>('[data-go]');if(go){navigate(go.dataset.go||'home');return;}const sg=el.closest<HTMLElement>('[data-search-go]');if(sg){navigate(sg.dataset.searchGo||'home');return;}const cal=el.closest<HTMLElement>('[data-cal-date]');if(cal){setSelectedDate(new Date(`${cal.dataset.calDate}T12:00:00`));return;}const button=el.closest<HTMLButtonElement>('button');if(!button)return;
-    if(button.dataset.filter){setTxFilter(button.dataset.filter as any);return;}if(button.id==='clearTxFilters'){setTxFilter('all');setTxSearch('');setTxDateFrom('');setTxDateTo('');setForm(f=>({...f,txSearch:'',txDateFrom:'',txDateTo:''}));return;}if(button.dataset.themeChoice){const theme=button.dataset.themeChoice as Profile['theme'];setData(d=>({...d,profile:{...d.profile,theme}}));try{const p=await api.saveProfile({theme});setData(d=>({...d,profile:p}));notify('Tema atualizado.');}catch{}return;}
-    if(button.classList.contains('switch')){const key=button.dataset.setting,patch=key==='due'?{dueNotifications:!profile.dueNotifications}:{goalNotifications:!profile.goalNotifications};setData(d=>({...d,profile:{...d.profile,...patch}}));try{const p=await api.saveProfile(patch);setData(d=>({...d,profile:p}));notify('Preferência atualizada.');}catch{}return;}
-    switch(button.id){
-      case 'loginBtn':await login();return;case 'firstAccessBtn':setGeneratedUsername('');setRecoveryCode('');setPendingActivationToken('');setAuthView('register');resetForm();return;case 'forgotBtn':setAuthView('recover');resetForm();return;case 'backLoginBtn':case 'backRecoveryBtn':setGeneratedUsername('');setRecoveryCode('');setPendingActivationToken('');setAuthView('login');resetForm();return;case 'createAccessBtn':await register();return;case 'recoverAccessBtn':await recover();return;case 'authorizeDeviceBtn':await authorizeDevice();return;case 'cancelDeviceBtn':setPendingDeviceVerification('');setAuthView('login');resetForm();return;
-      case 'copyRecoveryBtn':try{await navigator.clipboard.writeText(recoveryCode);notify('Código copiado.');}catch{notify('Selecione o código e copie manualmente.');}return;
-      case 'finishRecoveryBtn':if(!pendingActivationToken){setAuthView('register');return notify('Refaça o primeiro acesso para gerar um novo código.');}try{const out=await busy(()=>api.confirmRegistration(pendingActivationToken));setPendingActivationToken('');await applyAuth(out);notify('Código confirmado. Seu acesso está pronto.');}catch{}return;
-      case 'togglePassword':{const p=document.getElementById('loginPass') as HTMLInputElement|null;if(p)p.type=p.type==='password'?'text':'password';return;}
-      case 'prevMonth':{const d=new Date(calendarCursor);d.setMonth(d.getMonth()-1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;}case 'nextMonth':{const d=new Date(calendarCursor);d.setMonth(d.getMonth()+1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;}
-      case 'sidebarToggle':document.body.classList.toggle('sidebar-collapsed');return;case 'syncNowBtn':case 'mobileSync':await manualRefresh();return;case 'searchBtn':case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;case 'notifyBtn':setModal({kind:'notifications'});return;case 'mobileMore':setSheetOpen(true);return;
+    const el=e.target as HTMLElement;
+    const go=el.closest<HTMLElement>('[data-go]');
+    if(go){navigate(go.dataset.go||'home');return;}
+    const sg=el.closest<HTMLElement>('[data-search-go]');
+    if(sg){navigate(sg.dataset.searchGo||'home');return;}
+    const cal=el.closest<HTMLElement>('[data-cal-date]');
+    if(cal){setSelectedDate(new Date(`${cal.dataset.calDate}T12:00:00`));return;}
+    const button=el.closest<HTMLButtonElement>('button');
+    if(!button)return;
+
+    if(button.dataset.filter){setTxFilter(button.dataset.filter as any);return;}
+    if(button.id==='clearTxFilters'){
+      setTxFilter('all');setTxSearch('');setTxDateFrom('');setTxDateTo('');
+      setForm(f=>({...f,txSearch:'',txDateFrom:'',txDateTo:''}));
+      return;
     }
+
+    if(button.dataset.themeChoice){
+      const theme=button.dataset.themeChoice as Profile['theme'];
+      const snapshot=dataRef.current;
+      const next={...snapshot,profile:{...snapshot.profile,theme}};
+      dataRef.current=next;setData(next);
+      try{
+        const p=await api.saveProfile({theme});
+        const settled={...dataRef.current,profile:p};dataRef.current=settled;setData(settled);
+      }catch(e){
+        dataRef.current=snapshot;setData(snapshot);
+        notify(e instanceof ApiError?e.message:'Não foi possível alterar o tema.');
+      }
+      return;
+    }
+
+    if(button.classList.contains('switch')){
+      const key=button.dataset.setting;
+      const patch=key==='due'?{dueNotifications:!profile.dueNotifications}:{goalNotifications:!profile.goalNotifications};
+      const snapshot=dataRef.current;
+      const next={...snapshot,profile:{...snapshot.profile,...patch}};
+      dataRef.current=next;setData(next);
+      try{
+        const p=await api.saveProfile(patch);
+        const settled={...dataRef.current,profile:p};dataRef.current=settled;setData(settled);
+      }catch(e){
+        dataRef.current=snapshot;setData(snapshot);
+        notify(e instanceof ApiError?e.message:'Não foi possível salvar a preferência.');
+      }
+      return;
+    }
+
+    switch(button.id){
+      case 'loginBtn':await login();return;
+      case 'firstAccessBtn':
+        setGeneratedUsername('');setRecoveryCode('');setPendingActivationToken('');setAuthView('register');resetForm();return;
+      case 'forgotBtn':
+        setAuthView('recover');resetForm({recoverUser:rememberedUsername});return;
+      case 'backLoginBtn':
+      case 'backRecoveryBtn':
+        setGeneratedUsername('');setRecoveryCode('');setPendingActivationToken('');setAuthView('login');resetForm({loginUser:rememberedUsername});return;
+      case 'createAccessBtn':await register();return;
+      case 'recoverAccessBtn':await recover();return;
+      case 'authorizeDeviceBtn':await authorizeDevice();return;
+      case 'cancelDeviceBtn':
+        setPendingDeviceVerification('');setAuthView('login');resetForm({loginUser:rememberedUsername});return;
+      case 'copyRecoveryBtn':
+        try{await navigator.clipboard.writeText(recoveryCode);notify('Código copiado.');}
+        catch{notify('Selecione e copie o código.');}
+        return;
+      case 'finishRecoveryBtn':
+        if(!pendingActivationToken){setAuthView('register');return notify('Refaça o primeiro acesso.');}
+        try{
+          const out=await busy(()=>api.confirmRegistration(pendingActivationToken));
+          setPendingActivationToken('');
+          await applyAuth(out);
+        }catch{}
+        return;
+      case 'togglePassword':{
+        const p=document.getElementById('loginPass') as HTMLInputElement|null;
+        if(p)p.type=p.type==='password'?'text':'password';
+        return;
+      }
+      case 'prevMonth':{
+        const d=new Date(calendarCursor);d.setMonth(d.getMonth()-1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;
+      }
+      case 'nextMonth':{
+        const d=new Date(calendarCursor);d.setMonth(d.getMonth()+1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;
+      }
+      case 'sidebarToggle':document.body.classList.toggle('sidebar-collapsed');return;
+      case 'syncNowBtn':await manualRefresh();return;
+      case 'searchBtn':
+      case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;
+      case 'notifyBtn':setModal({kind:'notifications'});return;
+    }
+
     const action=button.dataset.action;
     if(action==='close-modal'){setModal(null);return;}
-    if(action==='close-sheet'){setSheetOpen(false);return;}
     if(action==='new-transaction'){setModal({kind:'new-transaction'});resetForm({newTxDate:todayISO(),newTxType:'Despesa',newTxStatus:'auto'});return;}
-    if(action==='edit-transaction'){const t=transactions.find(x=>x.id===button.dataset.id);if(!t)return;setModal({kind:'edit-transaction',id:t.id});resetForm({newTxDesc:t.desc,newTxValue:String(Math.abs(t.value)),newTxType:t.type,newTxDate:t.date,newTxCat:t.cat,newTxStatus:t.status});return;}
-    if(action==='post-transaction'){const id=button.dataset.id;if(!id)return;try{await busy(()=>api.postTransaction(id),'Movimentação efetivada no saldo atual.');await refresh();}catch{}return;}
-    if(action==='delete-transaction'){const id=button.dataset.id;if(!id||!window.confirm('Excluir esta movimentação?'))return;try{await busy(()=>api.deleteTransaction(id),'Movimentação excluída.');await refresh();}catch{}return;}
+    if(action==='edit-transaction'){
+      const t=transactions.find(x=>x.id===button.dataset.id);if(!t)return;
+      setModal({kind:'edit-transaction',id:t.id});
+      resetForm({newTxDesc:t.desc,newTxValue:String(Math.abs(t.value)),newTxType:t.type,newTxDate:t.date,newTxCat:t.cat,newTxStatus:t.status});
+      return;
+    }
+    if(action==='post-transaction'){
+      const id=button.dataset.id;if(!id)return;
+      try{
+        await optimistic(
+          d=>({...d,transactions:d.transactions.map(t=>t.id===id?{...t,status:'posted',postedAt:new Date().toISOString()}:t)}),
+          ()=>api.postTransaction(id),
+          (d,result)=>({...d,transactions:d.transactions.map(t=>t.id===id?result:t)})
+        );
+      }catch{}
+      return;
+    }
+    if(action==='delete-transaction'){
+      const id=button.dataset.id;if(!id||!window.confirm('Excluir esta movimentação?'))return;
+      try{await optimistic(d=>({...d,transactions:d.transactions.filter(t=>t.id!==id)}),()=>api.deleteTransaction(id));}catch{}
+      return;
+    }
+
     if(action==='new-goal'){setModal({kind:'new-goal'});resetForm();return;}
-    if(action==='edit-goal'){const g=goals.find(x=>x.id===button.dataset.id);if(!g)return;setModal({kind:'edit-goal',id:g.id});resetForm({newGoalName:g.name,newGoalTarget:String(g.target),newGoalDue:g.due||''});return;}
-    if(action==='delete-goal'){const id=button.dataset.id;if(!id||!window.confirm('Excluir esta meta?'))return;try{await busy(()=>api.deleteGoal(id),'Meta excluída.');await refresh();}catch{}return;}
+    if(action==='edit-goal'){
+      const g=goals.find(x=>x.id===button.dataset.id);if(!g)return;
+      setModal({kind:'edit-goal',id:g.id});resetForm({newGoalName:g.name,newGoalTarget:String(g.target),newGoalDue:g.due||''});return;
+    }
+    if(action==='delete-goal'){
+      const id=button.dataset.id;if(!id||!window.confirm('Excluir esta meta?'))return;
+      try{
+        await optimistic(
+          d=>({...d,goals:d.goals.filter(g=>g.id!==id),goalContributions:d.goalContributions.filter(x=>x.goalId!==id)}),
+          ()=>api.deleteGoal(id)
+        );
+      }catch{}
+      return;
+    }
+
     if(action==='new-event'){setModal({kind:'new-event'});resetForm({newEventDate:isoFromDate(selectedDate)});return;}
-    if(action==='edit-event'){const ev=events.find(x=>x.id===button.dataset.id);if(!ev)return;setModal({kind:'edit-event',id:ev.id});resetForm({newEventTitle:ev.title,newEventDate:ev.date,newEventTime:ev.time||'',newEventNote:ev.note||''});return;}
-    if(action==='delete-event'){const id=button.dataset.id;if(!id||!window.confirm('Excluir este evento?'))return;try{await busy(()=>api.deleteEvent(id),'Evento excluído.');await refresh();}catch{}return;}
+    if(action==='edit-event'){
+      const ev=events.find(x=>x.id===button.dataset.id);if(!ev)return;
+      setModal({kind:'edit-event',id:ev.id});resetForm({newEventTitle:ev.title,newEventDate:ev.date,newEventTime:ev.time||'',newEventNote:ev.note||''});return;
+    }
+    if(action==='delete-event'){
+      const id=button.dataset.id;if(!id||!window.confirm('Excluir este evento?'))return;
+      try{await optimistic(d=>({...d,events:d.events.filter(ev=>ev.id!==id)}),()=>api.deleteEvent(id));}catch{}
+      return;
+    }
+
     if(action==='new-debt'){setModal({kind:'new-debt'});resetForm();return;}
-    if(action==='edit-debt'){const d=debts.find(x=>x.id===button.dataset.id);if(!d)return;setModal({kind:'edit-debt',id:d.id});resetForm({newDebtName:d.name,newDebtValue:String(d.total),newDebtDue:d.due,newDebtCategory:d.category});return;}
-    if(action==='delete-debt'){const id=button.dataset.id;if(!id||!window.confirm('Excluir esta dívida e seu histórico de pagamentos?'))return;try{await busy(()=>api.deleteDebt(id),'Dívida excluída.');await refresh();}catch{}return;}
+    if(action==='edit-debt'){
+      const d=debts.find(x=>x.id===button.dataset.id);if(!d)return;
+      setModal({kind:'edit-debt',id:d.id});resetForm({newDebtName:d.name,newDebtValue:String(d.total),newDebtDue:d.due,newDebtCategory:d.category});return;
+    }
+    if(action==='delete-debt'){
+      const id=button.dataset.id;if(!id||!window.confirm('Excluir esta dívida e seus pagamentos?'))return;
+      try{
+        await optimistic(
+          d=>({...d,debts:d.debts.filter(x=>x.id!==id),debtPayments:d.debtPayments.filter(x=>x.debtId!==id)}),
+          ()=>api.deleteDebt(id)
+        );
+      }catch{}
+      return;
+    }
     if(action==='debt-payment'){setModal({kind:'debt-payment',id:button.dataset.debt});resetForm({debtPayDate:todayISO()});return;}
     if(action==='debt-history'){setModal({kind:'debt-history',id:button.dataset.id});resetForm();return;}
-    if(action==='edit-debt-payment'){const p=debtPayments.find(x=>x.id===button.dataset.id);if(!p)return;setModal({kind:'edit-debt-payment',id:p.id});resetForm({historyParentId:p.debtId,debtPayValue:String(p.value),debtPayDate:p.date});return;}
-    if(action==='delete-debt-payment'){const p=debtPayments.find(x=>x.id===button.dataset.id);if(!p||!window.confirm('Excluir este pagamento do histórico?'))return;try{await busy(()=>api.deleteDebtPayment(p.debtId,p.id),'Pagamento excluído e saldo recalculado.');await refresh();setModal({kind:'debt-history',id:p.debtId});}catch{}return;}
+    if(action==='edit-debt-payment'){
+      const p=debtPayments.find(x=>x.id===button.dataset.id);if(!p)return;
+      setModal({kind:'edit-debt-payment',id:p.id});
+      resetForm({historyParentId:p.debtId,debtPayValue:String(p.value),debtPayDate:p.date});
+      return;
+    }
+    if(action==='delete-debt-payment'){
+      const p=debtPayments.find(x=>x.id===button.dataset.id);if(!p||!window.confirm('Excluir este pagamento?'))return;
+      try{
+        await optimistic(
+          d=>{
+            const payments=d.debtPayments.filter(x=>x.id!==p.id);
+            const debtsNext=d.debts.map(debt=>debt.id===p.debtId?{...debt,remaining:Math.min(debt.total,debt.remaining+p.value)}:debt);
+            return {...d,debtPayments:payments,debts:debtsNext};
+          },
+          ()=>api.deleteDebtPayment(p.debtId,p.id),
+          (d,result)=>({...d,debts:d.debts.map(x=>x.id===p.debtId?result.debt:x)})
+        );
+        setModal({kind:'debt-history',id:p.debtId});
+      }catch{}
+      return;
+    }
+
     if(action==='goal-add'){setModal({kind:'goal-add',id:button.dataset.goal});resetForm();return;}
     if(action==='goal-history'){setModal({kind:'goal-history',id:button.dataset.id});resetForm();return;}
-    if(action==='edit-goal-contribution'){const x=goalContributions.find(v=>v.id===button.dataset.id);if(!x)return;setModal({kind:'edit-goal-contribution',id:x.id});resetForm({historyParentId:x.goalId,goalAddValue:String(x.value)});return;}
-    if(action==='delete-goal-contribution'){const x=goalContributions.find(v=>v.id===button.dataset.id);if(!x||!window.confirm('Excluir este aporte do histórico?'))return;try{await busy(()=>api.deleteGoalContribution(x.goalId,x.id),'Aporte excluído e meta recalculada.');await refresh();setModal({kind:'goal-history',id:x.goalId});}catch{}return;}
+    if(action==='edit-goal-contribution'){
+      const x=goalContributions.find(v=>v.id===button.dataset.id);if(!x)return;
+      setModal({kind:'edit-goal-contribution',id:x.id});
+      resetForm({historyParentId:x.goalId,goalAddValue:String(x.value)});
+      return;
+    }
+    if(action==='delete-goal-contribution'){
+      const x=goalContributions.find(v=>v.id===button.dataset.id);if(!x||!window.confirm('Excluir este aporte?'))return;
+      try{
+        await optimistic(
+          d=>({...d,
+            goalContributions:d.goalContributions.filter(v=>v.id!==x.id),
+            goals:d.goals.map(g=>g.id===x.goalId?{...g,saved:Math.max(0,g.saved-x.value)}:g)
+          }),
+          ()=>api.deleteGoalContribution(x.goalId,x.id),
+          (d,result)=>({...d,goals:d.goals.map(g=>g.id===x.goalId?result.goal:g)})
+        );
+        setModal({kind:'goal-history',id:x.goalId});
+      }catch{}
+      return;
+    }
+
     if(action==='edit-profile'){setModal({kind:'edit-profile'});resetForm({profileDisplayName:profile.displayName});return;}
     if(action==='change-password'){setModal({kind:'change-password'});resetForm();return;}
     if(action==='recovery-code'){setModal({kind:'recovery-code'});resetForm();return;}
-    if(action==='privacy'){setModal({kind:'privacy'});return;}
-    if(action==='categories'){setModal({kind:'categories'});return;}
-    if(action==='export'){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ritmo-backup-${todayISO()}.json`;a.click();URL.revokeObjectURL(url);notify('Backup exportado.');return;}
-    if(action==='logout'){try{await api.logout();}catch{}await clearLocalAuth();setAuthenticated(false);setData(emptyData);setAuthView('login');notify('Sessão encerrada.');return;}
+    if(action==='export'){
+      const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download=`ritmo-backup-${todayISO()}.json`;a.click();URL.revokeObjectURL(url);
+      return;
+    }
+    if(action==='logout'){
+      try{await api.logout();}catch{}
+      await clearLocalAuth();
+      setAuthenticated(false);setData(emptyData);dataRef.current=emptyData;setAuthView('login');
+      resetForm({loginUser:rememberedUsername});
+      return;
+    }
+
     if(button.id==='saveTx'){
       const desc=(form.newTxDesc||'').trim(),value=Math.abs(parseMoney(form.newTxValue||'')),type=(form.newTxType||'Despesa') as 'Receita'|'Despesa',date=form.newTxDate||todayISO();
       if(!desc||!value)return notify('Informe descrição e valor.');
       const status=(form.newTxStatus==='pending'||form.newTxStatus==='posted')?form.newTxStatus:(date>todayISO()?'pending':'posted');
       const payload={date,desc,cat:(form.newTxCat||'Outros').trim()||'Outros',type,value,status:status as 'pending'|'posted',icon:'circle-dollar-sign'};
-      try{if(modal?.kind==='edit-transaction'&&modal.id)await busy(()=>api.updateTransaction(modal.id!,payload),'Movimentação atualizada.');else await busy(()=>api.createTransaction(payload),'Movimentação salva.');setModal(null);await refresh();}catch{}return;
+      const signed=type==='Receita'?value:-value;
+      const restore=modal;
+      setModal(null);
+      try{
+        if(restore?.kind==='edit-transaction'&&restore.id){
+          const id=restore.id;
+          const optimisticItem:Transaction={id,...payload,value:signed,postedAt:status==='posted'?new Date().toISOString():undefined};
+          await optimistic(
+            d=>({...d,transactions:d.transactions.map(t=>t.id===id?optimisticItem:t)}),
+            ()=>api.updateTransaction(id,payload),
+            (d,result)=>({...d,transactions:d.transactions.map(t=>t.id===id?result:t)})
+          );
+        }else{
+          const tempId=`optimistic:${crypto.randomUUID()}`;
+          const optimisticItem:Transaction={id:tempId,...payload,value:signed,postedAt:status==='posted'?new Date().toISOString():undefined};
+          await optimistic(
+            d=>({...d,transactions:[optimisticItem,...d.transactions]}),
+            ()=>api.createTransaction(payload),
+            (d,result)=>({...d,transactions:d.transactions.map(t=>t.id===tempId?result:t)})
+          );
+        }
+      }catch{setModal(restore);}
+      return;
     }
-    if(button.id==='saveGoal'){const name=(form.newGoalName||'').trim(),target=Math.abs(parseMoney(form.newGoalTarget||''));if(!name||!target)return notify('Informe nome e valor da meta.');try{if(modal?.kind==='edit-goal'&&modal.id)await busy(()=>api.updateGoal(modal.id!,{name,target,due:form.newGoalDue||''}),'Meta atualizada.');else await busy(()=>api.createGoal({name,target,saved:0,due:form.newGoalDue||''}),'Meta criada.');setModal(null);await refresh();}catch{}return;}
-    if(button.id==='saveEvent'){const title=(form.newEventTitle||'').trim(),date=form.newEventDate||'';if(!title||!date)return notify('Informe nome e data.');const payload={title,date,time:form.newEventTime||'',note:(form.newEventNote||'').trim()};try{if(modal?.kind==='edit-event'&&modal.id)await busy(()=>api.updateEvent(modal.id!,payload),'Evento atualizado.');else await busy(()=>api.createEvent(payload),'Evento adicionado.');setModal(null);await refresh();}catch{}return;}
-    if(button.id==='saveDebt'){const name=(form.newDebtName||'').trim(),value=Math.abs(parseMoney(form.newDebtValue||'')),due=form.newDebtDue||'';if(!name||!value||!due)return notify('Informe nome, valor e vencimento.');const category=(form.newDebtCategory||'Compromisso').trim()||'Compromisso';try{if(modal?.kind==='edit-debt'&&modal.id)await busy(()=>api.updateDebt(modal.id!,{name,total:value,due,category}),'Dívida atualizada.');else await busy(()=>api.createDebt({name,total:value,remaining:value,due,category}),'Dívida cadastrada.');setModal(null);await refresh();}catch{}return;}
-    if(button.id==='confirmPay'&&modal?.id){const value=Math.abs(parseMoney(form.debtPayValue||''));if(!value)return notify('Informe o valor pago.');try{await busy(()=>api.payDebt(modal.id!,value,form.debtPayDate||todayISO()),'Pagamento registrado.');setModal(null);await refresh();}catch{}return;}
-    if(button.id==='saveDebtPaymentEdit'&&modal?.id){const value=Math.abs(parseMoney(form.debtPayValue||'')),debtId=form.historyParentId||'';if(!value||!debtId)return notify('Informe o valor pago.');try{await busy(()=>api.updateDebtPayment(debtId,modal.id!,{value,date:form.debtPayDate||todayISO()}),'Pagamento atualizado e saldo recalculado.');await refresh();setModal({kind:'debt-history',id:debtId});}catch{}return;}
-    if(button.id==='confirmGoalAdd'&&modal?.id){const value=Math.abs(parseMoney(form.goalAddValue||''));if(!value)return notify('Informe o valor.');try{await busy(()=>api.addGoalValue(modal.id!,value),'Valor adicionado.');setModal(null);await refresh();}catch{}return;}
-    if(button.id==='saveGoalContributionEdit'&&modal?.id){const value=Math.abs(parseMoney(form.goalAddValue||'')),goalId=form.historyParentId||'';if(!value||!goalId)return notify('Informe o valor.');try{await busy(()=>api.updateGoalContribution(goalId,modal.id!,value),'Aporte atualizado e meta recalculada.');await refresh();setModal({kind:'goal-history',id:goalId});}catch{}return;}
-    if(button.id==='saveProfile'){const displayName=(form.profileDisplayName||'').trim();if(!displayName)return notify('Informe o nome de exibição.');try{const p=await busy(()=>api.saveProfile({displayName}),'Perfil atualizado.');setData(d=>({...d,profile:p}));setModal(null);await refresh();}catch{}return;}
-    if(button.id==='savePassword'){const cur=form.currentPass||'',np=form.newPass||'',np2=form.newPass2||'';if(np.length<8)return notify('Use pelo menos 8 caracteres.');if(np!==np2)return notify('As senhas não conferem.');try{const out=await busy(()=>api.changePassword({currentPassword:cur,newPassword:np}));await persistAuth(out);setModal(null);notify('Senha atualizada e outras sessões encerradas.');}catch{}return;}
-    if(button.id==='generateNewRecovery'){try{const out=await busy(()=>api.rotateRecoveryCode(form.recoveryCurrentPass||''));setRecoveryCode(out.recoveryCode);setModal({kind:'new-recovery-code'});resetForm();}catch{}return;}
-    if(button.id==='copyModalRecovery'){try{await navigator.clipboard.writeText(recoveryCode);notify('Código copiado.');}catch{notify('Selecione e copie manualmente.');}return;}
-    if(button.id==='enableBiometrics'){try{await busy(()=>registerBiometrics(),'Biometria ativada neste aparelho.');}catch{}return;}
-    if(button.id==='biometricLogin'){const username=(form.loginUser||'').trim();if(!isNativeApp()&&!username)return notify('Informe o usuário antes de usar a biometria.');try{const out=await busy(()=>loginWithBiometrics(username));if(out.mode==='native'){setAuthenticated(true);setAuthView('login');await refresh();}else{await applyAuth(out.auth);}notify('Acesso biométrico confirmado.');}catch{}return;}
-    if(button.id==='enablePush'){try{const push=await busy(()=>enablePushNotifications(),'Notificações ativadas.');if(push?.mode==='web')await api.sendTestPush();else await syncNativeFinancialNotifications(data,profile);}catch{}return;}
-    if(button.id==='installPwa'){try{const ok=await installPWA();notify(ok?'Ritmo instalado.':'A instalação não foi concluída.');}catch{notify('Use a opção “Instalar aplicativo” do navegador.');}return;}
+
+    if(button.id==='saveGoal'){
+      const name=(form.newGoalName||'').trim(),target=Math.abs(parseMoney(form.newGoalTarget||''));
+      if(!name||!target)return notify('Informe nome e valor da meta.');
+      const due=form.newGoalDue||'',restore=modal;
+      setModal(null);
+      try{
+        if(restore?.kind==='edit-goal'&&restore.id){
+          const id=restore.id,current=goals.find(g=>g.id===id);
+          const optimisticItem:Goal={id,name,target,saved:current?.saved||0,due};
+          await optimistic(
+            d=>({...d,goals:d.goals.map(g=>g.id===id?optimisticItem:g)}),
+            ()=>api.updateGoal(id,{name,target,due}),
+            (d,result)=>({...d,goals:d.goals.map(g=>g.id===id?result:g)})
+          );
+        }else{
+          const tempId=`optimistic:${crypto.randomUUID()}`,optimisticItem:Goal={id:tempId,name,target,saved:0,due};
+          await optimistic(
+            d=>({...d,goals:[...d.goals,optimisticItem]}),
+            ()=>api.createGoal({name,target,saved:0,due}),
+            (d,result)=>({...d,goals:d.goals.map(g=>g.id===tempId?result:g)})
+          );
+        }
+      }catch{setModal(restore);}
+      return;
+    }
+
+    if(button.id==='saveEvent'){
+      const title=(form.newEventTitle||'').trim(),date=form.newEventDate||'';
+      if(!title||!date)return notify('Informe nome e data.');
+      const payload={title,date,time:form.newEventTime||'',note:(form.newEventNote||'').trim()},restore=modal;
+      setModal(null);
+      try{
+        if(restore?.kind==='edit-event'&&restore.id){
+          const id=restore.id,optimisticItem:EventItem={id,...payload};
+          await optimistic(
+            d=>({...d,events:d.events.map(ev=>ev.id===id?optimisticItem:ev)}),
+            ()=>api.updateEvent(id,payload),
+            (d,result)=>({...d,events:d.events.map(ev=>ev.id===id?result:ev)})
+          );
+        }else{
+          const tempId=`optimistic:${crypto.randomUUID()}`,optimisticItem:EventItem={id:tempId,...payload};
+          await optimistic(
+            d=>({...d,events:[...d.events,optimisticItem]}),
+            ()=>api.createEvent(payload),
+            (d,result)=>({...d,events:d.events.map(ev=>ev.id===tempId?result:ev)})
+          );
+        }
+      }catch{setModal(restore);}
+      return;
+    }
+
+    if(button.id==='saveDebt'){
+      const name=(form.newDebtName||'').trim(),value=Math.abs(parseMoney(form.newDebtValue||'')),due=form.newDebtDue||'';
+      if(!name||!value||!due)return notify('Informe nome, valor e vencimento.');
+      const category=(form.newDebtCategory||'Compromisso').trim()||'Compromisso',restore=modal;
+      setModal(null);
+      try{
+        if(restore?.kind==='edit-debt'&&restore.id){
+          const id=restore.id,current=debts.find(d=>d.id===id);
+          const alreadyPaid=Math.max(0,(current?.total||0)-(current?.remaining||0));
+          const optimisticItem:Debt={id,name,total:value,remaining:Math.max(0,value-alreadyPaid),due,category};
+          await optimistic(
+            d=>({...d,debts:d.debts.map(x=>x.id===id?optimisticItem:x)}),
+            ()=>api.updateDebt(id,{name,total:value,due,category}),
+            (d,result)=>({...d,debts:d.debts.map(x=>x.id===id?result:x)})
+          );
+        }else{
+          const tempId=`optimistic:${crypto.randomUUID()}`,optimisticItem:Debt={id:tempId,name,total:value,remaining:value,due,category};
+          await optimistic(
+            d=>({...d,debts:[...d.debts,optimisticItem]}),
+            ()=>api.createDebt({name,total:value,remaining:value,due,category}),
+            (d,result)=>({...d,debts:d.debts.map(x=>x.id===tempId?result:x)})
+          );
+        }
+      }catch{setModal(restore);}
+      return;
+    }
+
+    if(button.id==='confirmPay'&&modal?.id){
+      const debtId=modal.id,value=Math.abs(parseMoney(form.debtPayValue||'')),date=form.debtPayDate||todayISO();
+      if(!value)return notify('Informe o valor pago.');
+      const restore=modal,tempId=`optimistic:${crypto.randomUUID()}`;
+      const tempPayment:DebtPayment={id:tempId,debtId,value,date,createdAt:new Date().toISOString()};
+      setModal(null);
+      try{
+        await optimistic(
+          d=>({...d,
+            debts:d.debts.map(x=>x.id===debtId?{...x,remaining:Math.max(0,x.remaining-value)}:x),
+            debtPayments:[tempPayment,...d.debtPayments]
+          }),
+          ()=>api.payDebt(debtId,value,date),
+          (d,result)=>({...d,
+            debts:d.debts.map(x=>x.id===debtId?result.debt:x),
+            debtPayments:d.debtPayments.map(x=>x.id===tempId?result.payment:x)
+          })
+        );
+      }catch{setModal(restore);}
+      return;
+    }
+
+    if(button.id==='saveDebtPaymentEdit'&&modal?.id){
+      const paymentId=modal.id,value=Math.abs(parseMoney(form.debtPayValue||'')),debtId=form.historyParentId||'',date=form.debtPayDate||todayISO();
+      if(!value||!debtId)return notify('Informe o valor pago.');
+      const current=debtPayments.find(x=>x.id===paymentId);
+      try{
+        await optimistic(
+          d=>{
+            const payments=d.debtPayments.map(x=>x.id===paymentId?{...x,value,date}:x);
+            const debt=d.debts.find(x=>x.id===debtId);
+            const paid=payments.filter(x=>x.debtId===debtId).reduce((sum,x)=>sum+x.value,0);
+            return {...d,debtPayments:payments,debts:d.debts.map(x=>x.id===debtId?{...x,remaining:Math.max(0,(debt?.total||0)-paid)}:x)};
+          },
+          ()=>api.updateDebtPayment(debtId,paymentId,{value,date}),
+          (d,result)=>({...d,
+            debtPayments:d.debtPayments.map(x=>x.id===paymentId?result.payment:x),
+            debts:d.debts.map(x=>x.id===debtId?result.debt:x)
+          })
+        );
+        setModal({kind:'debt-history',id:debtId});
+      }catch{
+        if(current)setModal({kind:'edit-debt-payment',id:paymentId});
+      }
+      return;
+    }
+
+    if(button.id==='confirmGoalAdd'&&modal?.id){
+      const goalId=modal.id,value=Math.abs(parseMoney(form.goalAddValue||''));
+      if(!value)return notify('Informe o valor.');
+      const restore=modal,tempId=`optimistic:${crypto.randomUUID()}`;
+      const tempContribution:GoalContribution={id:tempId,goalId,value,createdAt:new Date().toISOString()};
+      setModal(null);
+      try{
+        await optimistic(
+          d=>({...d,
+            goals:d.goals.map(g=>g.id===goalId?{...g,saved:Math.min(g.target,g.saved+value)}:g),
+            goalContributions:[tempContribution,...d.goalContributions]
+          }),
+          ()=>api.addGoalValue(goalId,value),
+          (d,result)=>({...d,
+            goals:d.goals.map(g=>g.id===goalId?result.goal:g),
+            goalContributions:d.goalContributions.map(x=>x.id===tempId?result.contribution:x)
+          })
+        );
+      }catch{setModal(restore);}
+      return;
+    }
+
+    if(button.id==='saveGoalContributionEdit'&&modal?.id){
+      const contributionId=modal.id,value=Math.abs(parseMoney(form.goalAddValue||'')),goalId=form.historyParentId||'';
+      if(!value||!goalId)return notify('Informe o valor.');
+      try{
+        await optimistic(
+          d=>{
+            const contributions=d.goalContributions.map(x=>x.id===contributionId?{...x,value}:x);
+            const saved=contributions.filter(x=>x.goalId===goalId).reduce((sum,x)=>sum+x.value,0);
+            return {...d,goalContributions:contributions,goals:d.goals.map(g=>g.id===goalId?{...g,saved:Math.min(g.target,saved)}:g)};
+          },
+          ()=>api.updateGoalContribution(goalId,contributionId,value),
+          (d,result)=>({...d,
+            goalContributions:d.goalContributions.map(x=>x.id===contributionId?result.contribution:x),
+            goals:d.goals.map(g=>g.id===goalId?result.goal:g)
+          })
+        );
+        setModal({kind:'goal-history',id:goalId});
+      }catch{}
+      return;
+    }
+
+    if(button.id==='saveProfile'){
+      const displayName=(form.profileDisplayName||'').trim();
+      if(!displayName)return notify('Informe o nome de exibição.');
+      const restore=modal;setModal(null);
+      try{
+        await optimistic(
+          d=>({...d,profile:{...d.profile,displayName}}),
+          ()=>api.saveProfile({displayName}),
+          (d,result)=>({...d,profile:result})
+        );
+      }catch{setModal(restore);}
+      return;
+    }
+
+    if(button.id==='savePassword'){
+      const cur=form.currentPass||'',np=form.newPass||'',np2=form.newPass2||'';
+      if(np.length<8)return notify('Use pelo menos 8 caracteres.');
+      if(np!==np2)return notify('As senhas não conferem.');
+      try{
+        const out=await busy(()=>api.changePassword({currentPassword:cur,newPassword:np}));
+        await persistAuth(out);setModal(null);notify('Senha atualizada.');
+      }catch{}
+      return;
+    }
+
+    if(button.id==='generateNewRecovery'){
+      try{
+        const out=await busy(()=>api.rotateRecoveryCode(form.recoveryCurrentPass||''));
+        setRecoveryCode(out.recoveryCode);setModal({kind:'new-recovery-code'});resetForm();
+      }catch{}
+      return;
+    }
+    if(button.id==='copyModalRecovery'){
+      try{await navigator.clipboard.writeText(recoveryCode);notify('Código copiado.');}
+      catch{notify('Selecione e copie o código.');}
+      return;
+    }
+    if(button.id==='enableBiometrics'){
+      try{
+        const result=await busy(()=>registerBiometrics());
+        if(result.verified){
+          const username=(profile.username||rememberedUsername||'').trim();
+          if(username){
+            saveRememberedUsername(username);
+            setRememberedLoginUser(username);
+            setRememberLogin(true);
+            setForm(f=>({...f,loginUser:username}));
+          }
+          setBiometricAvailable(true);
+          notify('Biometria pronta neste aparelho.');
+        }
+      }catch{}
+      return;
+    }
+    if(button.id==='biometricLogin'){
+      const username=(form.loginUser||rememberedUsername||'').trim();
+      if(!username)return notify('Marque “Lembrar usuário” após entrar para usar a biometria sem digitar.');
+      try{
+        const out=await busy(()=>loginWithBiometrics(username));
+        await applyAuth(out);
+      }catch{}
+      return;
+    }
+    if(button.id==='enablePush'){
+      try{await busy(()=>enablePushNotifications());notify('Notificações ativadas.');}catch{}
+      return;
+    }
+    if(button.id==='installPwa'){
+      try{
+        const ok=await installPWA();
+        if(!ok)notify('Use “Instalar aplicativo” no navegador.');
+      }catch{notify('Não foi possível abrir a instalação.');}
+      return;
+    }
   };
 
   function input(id:string,placeholder:string,type='text',extra:React.InputHTMLAttributes<HTMLInputElement>={}){return <input className="app-input" id={id} type={type} placeholder={placeholder} value={form[id]||''} onChange={e=>setField(id,e.target.value)} {...extra}/>;}
