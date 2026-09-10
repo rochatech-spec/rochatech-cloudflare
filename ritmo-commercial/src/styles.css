@@ -3082,3 +3082,21 @@ body.auth-active #loginPage{
     border-radius:26px!important;
   }
 }
+
+
+@media(max-width:1023px){
+  body.mobile-fab-menu-open{
+    overflow:hidden!important;
+    overscroll-behavior:none!important;
+  }
+  body.mobile-fab-menu-open #appBackground{
+    filter:blur(10px) saturate(.82) brightness(.94)!important;
+    transform:scale(1.012)!important;
+    transform-origin:center center!important;
+    pointer-events:none!important;
+  }
+  body.mobile-fab-menu-open #fabMenu,
+  body.mobile-fab-menu-open #globalFab{
+    pointer-events:auto!important;
+  }
+}
