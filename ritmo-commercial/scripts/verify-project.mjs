@@ -90,7 +90,7 @@ assert(worker.includes("username:pr.username"), 'Bootstrap deve sincronizar o us
 assert(api.includes("register: (body: { displayName: string; password: string })"), 'Cliente deve cadastrar por nome completo.');
 assert(worker.includes('usernameBaseFromName'), 'Worker deve gerar username a partir do nome.');
 assert(worker.includes('usernameCandidate'), 'Worker deve resolver colisões de username.');
-assert(worker.includes("UNIQUE constraint failed: users.username"), 'Cadastro deve tratar colisão atômica de username.');
+assert(worker.includes('UNIQUE constraint failed: users\\.username') && worker.includes('continue;'), 'Cadastro deve tratar colisão atômica de username.');
 assert(schema.includes('username TEXT NOT NULL UNIQUE COLLATE NOCASE'), 'Banco deve impedir usernames duplicados.');
 assert(app.includes("id='syncNowBtn'"), 'Botão Atualizar desktop ausente.');
 assert(app.includes("id='mobileSync'"), 'Botão Atualizar mobile ausente.');
