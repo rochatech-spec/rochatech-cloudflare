@@ -1,7 +1,6 @@
-import { Capacitor } from '@capacitor/core';
 import { browserSupportsWebAuthn, platformAuthenticatorIsAvailable, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { api, persistAuth } from './api';
-import { hasStoredSession, isNativeBiometricEnabled, setNativeBiometricEnabled } from './authStorage';
+import { hasStoredSession, isNativeApp, isNativeBiometricEnabled, setNativeBiometricEnabled } from './authStorage';
 
 let deferredInstallPrompt: any = null;
 const installListeners = new Set<() => void>();
@@ -17,18 +16,18 @@ window.addEventListener('appinstalled', () => {
   emitInstallAvailability();
 });
 
-export function isNativeApp() { return Capacitor.isNativePlatform(); }
+export { isNativeApp };
 export function isBiometricsAvailable() { return isNativeApp() || browserSupportsWebAuthn(); }
 
 export async function getBiometricAvailability() {
   if (isNativeApp()) {
-    const { BiometricAuth } = await import('@aparajita/capacitor-biometric-auth');
-    const info = await BiometricAuth.checkBiometry();
+    const { checkStatus } = await import('@tauri-apps/plugin-biometric');
+    const info = await checkStatus();
     return {
       available: Boolean(info.isAvailable),
-      strongAvailable: Boolean(info.strongBiometryIsAvailable),
-      reason: info.reason || '',
-      code: info.code || '',
+      strongAvailable: Boolean(info.isAvailable),
+      reason: info.error || '',
+      code: info.errorCode || '',
     };
   }
   if (!browserSupportsWebAuthn()) return { available:false, strongAvailable:false, reason:'WebAuthn indisponível.', code:'webauthnUnavailable' };
@@ -38,29 +37,26 @@ export async function getBiometricAvailability() {
 
 export async function subscribeBiometricAvailability(listener: (available:boolean) => void) {
   if (!isNativeApp()) return () => {};
-  const { BiometricAuth } = await import('@aparajita/capacitor-biometric-auth');
-  const initial = await BiometricAuth.checkBiometry();
-  listener(Boolean(initial.isAvailable));
-  const handle = await BiometricAuth.addResumeListener((info) => listener(Boolean(info.isAvailable)));
-  return () => { void handle.remove(); };
+  try {
+    const status = await getBiometricAvailability();
+    listener(status.available);
+  } catch {
+    listener(false);
+  }
+  return () => {};
 }
 
 async function nativeBiometricPrompt(reason: string) {
-  const { BiometricAuth, AndroidBiometryStrength } = await import('@aparajita/capacitor-biometric-auth');
-  const availability = await BiometricAuth.checkBiometry();
-  if (!availability.isAvailable) throw new Error(availability.reason || 'Nenhuma biometria compatível está cadastrada neste aparelho.');
-  const androidStrength = availability.strongBiometryIsAvailable
-    ? AndroidBiometryStrength.strong
-    : AndroidBiometryStrength.weak;
-  await BiometricAuth.authenticate({
-    reason,
-    cancelTitle: 'Cancelar',
+  const { authenticate, checkStatus } = await import('@tauri-apps/plugin-biometric');
+  const availability = await checkStatus();
+  if (!availability.isAvailable) throw new Error(availability.error || 'Nenhuma biometria compatível está cadastrada neste aparelho.');
+  await authenticate(reason, {
     allowDeviceCredential: true,
-    iosFallbackTitle: 'Usar código do aparelho',
-    androidTitle: 'Ritmo',
-    androidSubtitle: reason,
-    androidConfirmationRequired: false,
-    androidBiometryStrength: androidStrength,
+    cancelTitle: 'Cancelar',
+    fallbackTitle: 'Usar código do aparelho',
+    title: 'Ritmo',
+    subtitle: reason,
+    confirmationRequired: false,
   });
 }
 
@@ -105,43 +101,11 @@ export async function loginWithBiometrics(username: string) {
   return { mode: 'web' as const, auth };
 }
 
-function dataUrlToFile(dataUrl: string, filename: string, mime: string) {
-  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  return new File([bytes], filename, { type: mime });
-}
-
-export async function capturePhoto(): Promise<File> {
-  if (isNativeApp()) {
-    const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
-    const photo = await Camera.getPhoto({
-      quality: 88,
-      allowEditing: false,
-      resultType: CameraResultType.Base64,
-      source: CameraSource.Camera,
-      correctOrientation: true,
-    });
-    if (!photo.base64String) throw new Error('A câmera não retornou uma imagem.');
-    const ext = photo.format === 'png' ? 'png' : 'jpeg';
-    return dataUrlToFile(photo.base64String, `ritmo-${Date.now()}.${ext === 'jpeg' ? 'jpg' : ext}`, `image/${ext}`);
-  }
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.setAttribute('capture', 'environment');
-  return new Promise((resolve, reject) => {
-    input.onchange = () => {
-      const file = input.files?.[0];
-      file ? resolve(file) : reject(new Error('Nenhuma imagem selecionada.'));
-    };
-    input.click();
-  });
-}
-
-export async function pickFile(accept = 'image/*,application/pdf'): Promise<File> {
+function filePicker(accept: string, capture?: string): Promise<File> {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = accept;
+  if (capture) input.setAttribute('capture', capture);
   return new Promise((resolve, reject) => {
     input.onchange = () => {
       const file = input.files?.[0];
@@ -151,13 +115,23 @@ export async function pickFile(accept = 'image/*,application/pdf'): Promise<File
   });
 }
 
+export async function capturePhoto(): Promise<File> {
+  return filePicker('image/*', 'environment');
+}
+
+export async function pickFile(accept = 'image/*,application/pdf'): Promise<File> {
+  return filePicker(accept);
+}
+
 export async function getCurrentPosition(options: PositionOptions = { enableHighAccuracy: true, timeout: 12000, maximumAge: 60_000 }) {
   if (isNativeApp()) {
-    const { Geolocation } = await import('@capacitor/geolocation');
-    let permission = await Geolocation.checkPermissions();
-    if (permission.location !== 'granted') permission = await Geolocation.requestPermissions();
+    const { checkPermissions, requestPermissions, getCurrentPosition: nativePosition } = await import('@tauri-apps/plugin-geolocation');
+    let permission = await checkPermissions();
+    if (permission.location === 'prompt' || permission.location === 'prompt-with-rationale') {
+      permission = await requestPermissions(['location']);
+    }
     if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('Permissão de localização não concedida.');
-    return Geolocation.getCurrentPosition({
+    return nativePosition({
       enableHighAccuracy: options.enableHighAccuracy,
       timeout: options.timeout,
       maximumAge: options.maximumAge,
@@ -168,11 +142,6 @@ export async function getCurrentPosition(options: PositionOptions = { enableHigh
 }
 
 export async function share(data: ShareData) {
-  if (isNativeApp()) {
-    const { Share } = await import('@capacitor/share');
-    await Share.share({ title: data.title, text: data.text, url: data.url });
-    return;
-  }
   if (!navigator.share) throw new Error('Compartilhamento nativo indisponível.');
   await navigator.share(data);
 }
@@ -186,18 +155,11 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export async function enablePushNotifications() {
   if (isNativeApp()) {
-    const { LocalNotifications } = await import('@capacitor/local-notifications');
-    const permission = await LocalNotifications.requestPermissions();
-    if (permission.display !== 'granted') throw new Error('Permissão de notificações não concedida.');
-    await LocalNotifications.schedule({
-      notifications: [{
-        id: Math.max(1, Math.floor(Date.now() / 1000) % 2_000_000_000),
-        title: 'Ritmo',
-        body: 'Notificações ativadas com sucesso.',
-        schedule: { at: new Date(Date.now() + 1200) },
-        extra: { route: 'home' },
-      }],
-    });
+    const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
+    let granted = await isPermissionGranted();
+    if (!granted) granted = (await requestPermission()) === 'granted';
+    if (!granted) throw new Error('Permissão de notificações não concedida.');
+    sendNotification({ title: 'Ritmo', body: 'Notificações ativadas com sucesso.' });
     return { mode: 'native' as const };
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push não é suportado neste aparelho.');
@@ -211,10 +173,13 @@ export async function enablePushNotifications() {
   return { mode: 'web' as const, subscription };
 }
 
-export async function scheduleNativeDueNotification(id: number, title: string, body: string, at: Date) {
+export async function scheduleNativeDueNotification(_id: number, title: string, body: string, at: Date) {
   if (!isNativeApp() || at.getTime() <= Date.now()) return false;
-  const { LocalNotifications } = await import('@capacitor/local-notifications');
-  await LocalNotifications.schedule({ notifications: [{ id, title, body, schedule: { at }, extra: { route: 'debts' } }] });
+  const { isPermissionGranted, requestPermission, sendNotification, Schedule } = await import('@tauri-apps/plugin-notification');
+  let granted = await isPermissionGranted();
+  if (!granted) granted = (await requestPermission()) === 'granted';
+  if (!granted) return false;
+  sendNotification({ title, body, schedule: Schedule.at(at) });
   return true;
 }
 
