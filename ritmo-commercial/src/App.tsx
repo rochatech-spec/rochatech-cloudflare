@@ -35,6 +35,7 @@ export default function App() {
   const [loading,setLoading]=useState(false);
   const [pwaInstallReady,setPwaInstallReady]=useState(()=>canInstallPWA());
   const [biometricAvailable,setBiometricAvailable]=useState(false);
+  const [desktopViewport,setDesktopViewport]=useState(()=>window.matchMedia('(min-width:1024px)').matches);
   const [recoveryCode,setRecoveryCode]=useState('');
   const [generatedUsername,setGeneratedUsername]=useState('');
   const [syncing,setSyncing]=useState(false);
@@ -70,6 +71,13 @@ export default function App() {
   const applyAuth=useCallback(async(out:AuthResponse)=>{await persistAuth(out);setAuthenticated(true);setAuthView('login');await refresh();},[refresh]);
 
   useEffect(()=>subscribePWAInstallAvailability(() => setPwaInstallReady(canInstallPWA())),[]);
+  useEffect(()=>{
+    const media=window.matchMedia('(min-width:1024px)');
+    const sync=()=>setDesktopViewport(media.matches);
+    sync();
+    media.addEventListener?.('change',sync);
+    return()=>media.removeEventListener?.('change',sync);
+  },[]);
 
   useEffect(()=>{
     let dispose: (()=>void)|undefined;
@@ -299,7 +307,7 @@ export default function App() {
       case 'finishRecoveryBtn':if(!pendingActivationToken){setAuthView('register');return notify('Refaça o primeiro acesso para gerar um novo código.');}try{const out=await busy(()=>api.confirmRegistration(pendingActivationToken));setPendingActivationToken('');await applyAuth(out);notify('Código confirmado. Seu acesso está pronto.');}catch{}return;
       case 'togglePassword':{const p=document.getElementById('loginPass') as HTMLInputElement|null;if(p)p.type=p.type==='password'?'text':'password';return;}
       case 'prevMonth':{const d=new Date(calendarCursor);d.setMonth(d.getMonth()-1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;}case 'nextMonth':{const d=new Date(calendarCursor);d.setMonth(d.getMonth()+1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;}
-      case 'syncNowBtn':case 'mobileSync':await manualRefresh();return;case 'searchBtn':case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;case 'notifyBtn':setModal({kind:'notifications'});return;case 'mobileMore':setSheetOpen(true);return;
+      case 'sidebarToggle':document.body.classList.toggle('sidebar-collapsed');return;case 'syncNowBtn':case 'mobileSync':await manualRefresh();return;case 'searchBtn':case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;case 'notifyBtn':setModal({kind:'notifications'});return;case 'mobileMore':setSheetOpen(true);return;
     }
     const action=button.dataset.action;
     if(action==='close-modal'){setModal(null);return;}if(action==='close-sheet'){setSheetOpen(false);return;}if(action==='new-transaction'){setModal({kind:'new-transaction'});resetForm({newTxDate:todayISO(),newTxType:'Despesa',newTxStatus:'auto'});return;}if(action==='new-goal'){setModal({kind:'new-goal'});resetForm();return;}if(action==='new-event'){setModal({kind:'new-event'});resetForm({newEventDate:isoFromDate(selectedDate)});return;}if(action==='new-debt'){setModal({kind:'new-debt'});resetForm();return;}if(action==='debt-payment'){setModal({kind:'debt-payment',id:button.dataset.debt});resetForm({debtPayDate:todayISO()});return;}if(action==='goal-add'){setModal({kind:'goal-add',id:button.dataset.goal});resetForm();return;}if(action==='edit-profile'){setModal({kind:'edit-profile'});resetForm({profileDisplayName:profile.displayName});return;}if(action==='change-password'){setModal({kind:'change-password'});resetForm();return;}if(action==='recovery-code'){setModal({kind:'recovery-code'});resetForm();return;}if(action==='privacy'){setModal({kind:'privacy'});return;}if(action==='categories'){setModal({kind:'categories'});return;}if(action==='export'){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ritmo-backup-${todayISO()}.json`;a.click();URL.revokeObjectURL(url);notify('Backup exportado.');return;}if(action==='logout'){try{await api.logout();}catch{}await clearLocalAuth();setAuthenticated(false);setData(emptyData);setAuthView('login');notify('Sessão encerrada.');return;}
@@ -331,7 +339,7 @@ export default function App() {
     if(modal.kind==='goal-add'){const g=goals.find(x=>x.id===modal.id);return shell('Adicionar valor',<div className="modal-form"><div className="row"><div className="row-main"><strong>{g?.name}</strong><small>Atual: {money(g?.saved||0)}</small></div></div>{input('goalAddValue','Valor','text',{inputMode:'decimal'})}<button className="premium-btn btn-primary" id="confirmGoalAdd" style={{height:48}}>Adicionar</button></div>);}
     if(modal.kind==='edit-profile')return shell('Editar perfil',<div className="modal-form"><div className="immutable-username-box"><span>Nome de usuário</span><strong>@{profile.username||'usuario'}</strong><small><i data-lucide="lock-keyhole"></i> Permanente. O nome de usuário não pode ser alterado.</small></div>{input('profileDisplayName','Nome de exibição')}<button className="premium-btn btn-primary" id="saveProfile" style={{height:48}}>Salvar alterações</button></div>);
     if(modal.kind==='change-password')return shell('Alterar senha',<div className="modal-form">{input('currentPass','Senha atual','password',{autoComplete:'current-password'})}{input('newPass','Nova senha','password',{autoComplete:'new-password'})}{input('newPass2','Confirmar nova senha','password',{autoComplete:'new-password'})}<button className="premium-btn btn-primary" id="savePassword" style={{height:48}}>Atualizar senha</button></div>);
-    if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{biometricAvailable&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide="scan-face"></i>Ativar biometria neste aparelho</button>}</div>);
+    if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{biometricAvailable&&!desktopViewport&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide="scan-face"></i>Ativar biometria neste aparelho</button>}</div>);
     if(modal.kind==='new-recovery-code')return shell('Novo código de recuperação',<div className="modal-form"><div className="recovery-code-box"><span>Seu novo código</span><code id="modalRecoveryCode">{recoveryCode}</code></div><div className="recovery-note"><i data-lucide="shield-check"></i><span>Anote ou copie agora. O código anterior deixou de funcionar.</span></div><button className="premium-btn btn-primary" id="copyModalRecovery" style={{height:48}}>Copiar código</button></div>);
     if(modal.kind==='privacy')return shell('Privacidade e dispositivo',<div className="list"><div className="row"><div className="row-main"><strong>Sincronização protegida</strong><small>Dados financeiros ficam no D1; arquivos ficam no Workers KV; biometria permanece no autenticador do aparelho.</small></div></div><div className="row"><div className="row-main"><strong>Notificações push</strong><small>Ative alertas nativos para vencimentos e metas.</small></div><button className="premium-btn btn-glass" id="enablePush" style={{height:36,padding:'0 11px'}}>Ativar</button></div><div className="row"><div className="row-main"><strong>Instalar PWA</strong><small>Instale o Ritmo como aplicativo no aparelho.</small></div><button className="premium-btn btn-glass" id="installPwa" style={{height:36,padding:'0 11px'}} disabled={!pwaInstallReady}>Instalar</button></div></div>);
     if(modal.kind==='categories')return shell('Categorias',<div className="list"><div className="row"><div className="row-main"><strong>Categorias livres</strong><small>Informe a categoria ao criar cada movimentação ou dívida.</small></div></div></div>);
@@ -426,6 +434,10 @@ export default function App() {
           </nav>
           
 
+          <button className='sidebar-logout' data-action='logout' title='Sair do Ritmo'>
+            <i data-lucide='log-out'></i>
+            <span className='sidebar-label'>Sair</span>
+          </button>
           <div className='sidebar-bottom liquid-soft'>
             <div className='sidebar-bottom-copy'>
               <strong>
@@ -468,6 +480,9 @@ export default function App() {
               </button>
               <button className='premium-btn btn-glass icon-btn' id='notifyBtn'>
                 <i data-lucide='bell'></i>
+              </button>
+              <button className='premium-btn btn-glass desktop-logout-btn' data-action='logout' title='Sair do Ritmo' aria-label='Sair'>
+                <i data-lucide='log-out'></i>
               </button>
               <button className='premium-btn btn-glass' data-go='profile' style={{height: '44px', padding: '0 10px 0 5px'} as React.CSSProperties}>
                 <span className='avatar' id='accountAvatar'>
@@ -538,7 +553,7 @@ export default function App() {
               <div className='kpi-grid home-kpis'>
                 
 
-                <div className='kpi liquid'>
+                <div className='kpi liquid home-shortcut' data-go='transactions' role='button' tabIndex={0}>
                   
 
                   <div className='kpi-icon finaci-blue-soft'>
@@ -562,7 +577,7 @@ export default function App() {
                 </div>
                 
 
-                <div className='kpi liquid'>
+                <div className='kpi liquid home-shortcut' data-go='transactions' role='button' tabIndex={0}>
                   
 
                   <div className='kpi-icon finaci-green-soft'>
@@ -586,7 +601,7 @@ export default function App() {
                 </div>
                 
 
-                <div className='kpi liquid'>
+                <div className='kpi liquid home-shortcut' data-go='transactions' role='button' tabIndex={0}>
                   
 
                   <div className='kpi-icon finaci-red-soft'>
@@ -610,7 +625,7 @@ export default function App() {
                 </div>
                 
 
-                <div className='kpi liquid'>
+                <div className='kpi liquid home-shortcut' data-go='goals' role='button' tabIndex={0}>
                   
 
                   <div className='kpi-icon finaci-gold-soft'>
@@ -1716,7 +1731,7 @@ export default function App() {
               Entrar 
               <i data-lucide='arrow-right'></i>
             </button>
-            {biometricAvailable && (
+            {biometricAvailable && !desktopViewport && (
               <button className='premium-btn btn-glass biometric-login-btn' id='biometricLogin' type='button'>
                 <i data-lucide='scan-face'></i>
                 Entrar com biometria
@@ -2037,6 +2052,10 @@ export default function App() {
                 Conta e preferências
               </small>
             </div>
+          </button>
+          <button className='row mobile-logout-row' data-action='logout'>
+            <div className='row-icon logout-icon-soft'><i data-lucide='log-out'></i></div>
+            <div className='row-main'><strong>Sair</strong><small>Encerrar sessão com segurança</small></div>
           </button>
         </div>
       </div>
