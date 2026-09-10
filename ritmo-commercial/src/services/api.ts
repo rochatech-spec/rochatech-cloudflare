@@ -1,7 +1,8 @@
+import { Capacitor } from '@capacitor/core';
 import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction, AuthUser } from '../types';
 import { clearSessionToken, getAuthTokens, setDeviceToken as persistDeviceToken, setLastUsername, setSessionToken as persistSessionToken } from './authStorage';
 
-const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || (Capacitor.isNativePlatform() ? 'https://ritmo-commercial.pages.dev/api' : '/api')).replace(/\/$/, '');
 
 export class ApiError extends Error {
   status: number;
