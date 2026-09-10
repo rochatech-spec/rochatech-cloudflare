@@ -159,3 +159,14 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_created ON idempotency_keys(user_id,c
 
 -- Migração idempotente aplicada pelo deploy: bases novas já possuem as colunas acima.
 -- Em bases existentes, o workflow executa estes ALTERs de forma tolerante antes do schema completo.
+
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  ref_id TEXT NOT NULL,
+  notification_date TEXT NOT NULL,
+  delivered_at TEXT NOT NULL,
+  PRIMARY KEY(user_id,kind,ref_id,notification_date)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_date ON notification_deliveries(notification_date);
