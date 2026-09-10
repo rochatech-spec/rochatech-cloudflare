@@ -77,3 +77,11 @@ assert(wrangler.includes('"binding": "FILES_KV"'), 'wrangler.jsonc deve declarar
 assert(css.includes('RITMO • MOBILE TRUE CENTER FINAL'), 'Patch final de centralização mobile ausente.');
 assert(css.includes('box-sizing:border-box!important'), 'Modal mobile deve usar border-box.');
 assert(css.includes('place-items:center!important'), 'Overlay mobile deve centralizar pelo viewport.');
+
+
+assert(app.includes("window.setInterval(()=>void sync(),30000)"), 'Sincronização periódica multiaparelho ausente.');
+assert(app.includes("window.addEventListener('focus',onFocus)"), 'Sincronização ao focar a aplicação ausente.');
+assert(app.includes("window.addEventListener('online',onOnline)"), 'Sincronização ao reconectar ausente.');
+assert(app.includes("document.addEventListener('visibilitychange',onVisibility)"), 'Sincronização ao voltar para primeiro plano ausente.');
+assert(!vite.includes("ritmo-bootstrap-offline"), 'Bootstrap autenticado não deve ser cacheado entre sessões.');
+assert(worker.includes("username:pr.username"), 'Bootstrap deve sincronizar o username real.');
