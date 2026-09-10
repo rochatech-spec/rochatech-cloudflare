@@ -12,6 +12,7 @@ on:
       - "ritmo-commercial/package.json"
       - "ritmo-commercial/vite.config.ts"
       - "ritmo-commercial/capacitor.config.ts"
+      - "ritmo-commercial/android/**"
   workflow_dispatch:
 
 permissions:
@@ -76,6 +77,10 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
+          grep -q '@aparajita/capacitor-biometric-auth' app/src/main/assets/capacitor.plugins.json
+          MERGED_MANIFEST="$(find app/build/intermediates -type f -name AndroidManifest.xml | grep -E 'merged_manifest|merged_manifests' | head -1 || true)"
+          test -n "$MERGED_MANIFEST"
+          grep -q 'android.permission.USE_BIOMETRIC' "$MERGED_MANIFEST"
           cp app/build/outputs/apk/debug/app-debug.apk ../Ritmo-Android.apk
           cd ..
           sha256sum Ritmo-Android.apk | tee Ritmo-Android.apk.sha256
