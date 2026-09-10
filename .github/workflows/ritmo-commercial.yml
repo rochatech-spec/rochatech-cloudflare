@@ -1,0 +1,289 @@
+name: Ritmo Commercial • PWA + Android
+
+on:
+  push:
+    branches: [main, ritmo-commercial-bootstrap]
+    paths:
+      - "ritmo-commercial/**"
+      - ".github/workflows/ritmo-commercial.yml"
+      - "ritmo-commercial-source.b64part-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ritmo-commercial-production
+  cancel-in-progress: true
+
+env:
+  PROJECT_DIR: ritmo-commercial
+  PAGES_PROJECT: ritmo-commercial
+  PAGES_URL: https://ritmo-commercial.pages.dev
+
+jobs:
+  bootstrap:
+    name: Materializar código-fonte
+    runs-on: ubuntu-latest
+    outputs:
+      materialized: ${{ steps.detect.outputs.materialized }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detectar pacote de bootstrap
+        id: detect
+        shell: bash
+        run: |
+          if [ -s ritmo-commercial-source.b64part-000 ]; then
+            echo "materialized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "materialized=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Materializar e versionar o projeto
+        if: steps.detect.outputs.materialized == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e ritmo-commercial
+          for i in $(seq 0 13); do
+            part=$(printf '%03d' "$i")
+            test -s "ritmo-commercial-source.b64part-$part"
+          done
+          cat ritmo-commercial-source.b64part-* > ritmo-commercial-source.b64
+          echo 'b7e34690f57a5722a7f77526d8c885b21d5a3ae747f694fa9985da5cfefa8203  ritmo-commercial-source.b64' | sha256sum -c -
+          base64 -d ritmo-commercial-source.b64 > ritmo-commercial-source.tar.xz
+          echo 'f5162f7e6d1c031b0a63de1ed417f6a35c4626d877c6fc78d315a8d550b5088b  ritmo-commercial-source.tar.xz' | sha256sum -c -
+          tar -xJf ritmo-commercial-source.tar.xz
+          test -s ritmo-commercial/package.json
+          test -s ritmo-commercial/src/App.tsx
+          test -s ritmo-commercial/src/worker.ts
+          rm -rf ritmo-commercial/.github
+          rm -f ritmo-commercial-source.b64part-* ritmo-commercial-source.b64 ritmo-commercial-source.tar.xz
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A .
+          git commit -m "feat(ritmo-commercial): materializar aplicação comercial"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+  quality:
+    name: Validar Web e Worker
+    needs: bootstrap
+    if: needs.bootstrap.outputs.materialized != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ritmo-commercial
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Verificações estáticas e TypeScript
+        run: npm run check
+      - name: Build PWA
+        run: npm run build
+      - name: Verificar artefatos PWA
+        run: |
+          set -euo pipefail
+          test -s dist/index.html
+          test -s dist/manifest.webmanifest
+          test -s dist/sw.js
+          test -s dist/pwa-192.png
+          test -s dist/pwa-512.png
+          grep -q 'standalone' dist/manifest.webmanifest
+
+  android:
+    name: Gerar APK Android
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: ritmo-commercial
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Instalar Android SDK
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Build web para o container Android
+        env:
+          VITE_API_URL: https://ritmo-commercial.pages.dev/api
+        run: npm run build
+      - name: Criar e sincronizar projeto Capacitor
+        run: |
+          set -euo pipefail
+          npx cap add android
+          npx cap sync android
+      - name: Compilar APK
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../Ritmo-Android.apk
+      - name: Publicar APK do workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ritmo-Android-APK
+          path: ritmo-commercial/Ritmo-Android.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  promote:
+    name: Promover versão validada para main
+    needs: [quality, android]
+    if: github.ref == 'refs/heads/ritmo-commercial-bootstrap'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Promover commit validado
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+          git push origin HEAD:main
+
+  deploy:
+    name: Publicar Cloudflare Pages
+    needs: quality
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    defaults:
+      run:
+        working-directory: ritmo-commercial
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Exigir credencial Cloudflare não interativa
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::O secret CLOUDFLARE_API_TOKEN não está configurado neste repositório."
+            exit 2
+          fi
+          npx wrangler whoami --json > /tmp/whoami.json
+      - name: Identificar conta
+        id: account
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+      - name: Criar ou reutilizar recursos Cloudflare
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          npx wrangler d1 list --json --config wrangler.bootstrap.jsonc > /tmp/d1.json
+          DB_ID="$(node -e "const a=require('/tmp/d1.json');const d=a.find(x=>x.name==='ritmo-commercial-db');if(d)process.stdout.write(d.uuid||d.id||'')")"
+          if [ -z "$DB_ID" ]; then
+            npx wrangler d1 create ritmo-commercial-db --config wrangler.bootstrap.jsonc > /tmp/d1-create.txt 2>&1
+            DB_ID="$(grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/d1-create.txt | head -1)"
+          fi
+          test -n "$DB_ID"
+          npx wrangler kv namespace list --config wrangler.bootstrap.jsonc > /tmp/kv.json
+          KV_ID="$(node -e "const fs=require('fs');let s=fs.readFileSync('/tmp/kv.json','utf8');let a;try{a=JSON.parse(s)}catch{const p=s.indexOf('['),q=s.lastIndexOf(']');a=JSON.parse(s.slice(p,q+1))}const d=a.find(x=>x.title==='ritmo-commercial-session'||x.name==='ritmo-commercial-session');if(d)process.stdout.write(d.id||'')")"
+          if [ -z "$KV_ID" ]; then
+            npx wrangler kv namespace create ritmo-commercial-session --config wrangler.bootstrap.jsonc > /tmp/kv-create.txt 2>&1
+            KV_ID="$(grep -Eo '[0-9a-f]{32}' /tmp/kv-create.txt | head -1)"
+          fi
+          test -n "$KV_ID"
+          if ! npx wrangler r2 bucket create ritmo-commercial-files --config wrangler.bootstrap.jsonc > /tmp/r2-create.txt 2>&1; then
+            grep -Eqi 'already|exist' /tmp/r2-create.txt || { cat /tmp/r2-create.txt; exit 1; }
+          fi
+          node - "$DB_ID" "$KV_ID" <<'NODE'
+          const fs=require('fs');
+          const [db,kv]=process.argv.slice(2);
+          const src=fs.readFileSync('wrangler.jsonc','utf8')
+            .replace('__D1_DATABASE_ID__',db)
+            .replace('__KV_NAMESPACE_ID__',kv);
+          fs.writeFileSync('wrangler.deploy.jsonc',src);
+          NODE
+          npx wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.deploy.jsonc
+      - name: Garantir projeto Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          if ! npx wrangler pages deployment list --project-name ritmo-commercial --config wrangler.bootstrap.jsonc >/tmp/pages-list.txt 2>&1; then
+            npx wrangler pages project create ritmo-commercial --production-branch main --config wrangler.bootstrap.jsonc
+          fi
+      - name: Garantir segredos permanentes da aplicação
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          npx wrangler pages secret list --project-name ritmo-commercial --config wrangler.bootstrap.jsonc > /tmp/secrets.txt
+          if ! grep -q 'RECOVERY_PEPPER' /tmp/secrets.txt; then
+            RECOVERY_PEPPER="$(openssl rand -hex 48)"
+            printf '%s' "$RECOVERY_PEPPER" | npx wrangler pages secret put RECOVERY_PEPPER --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
+          fi
+          HAS_PUBLIC=0; HAS_PRIVATE=0
+          grep -q 'VAPID_PUBLIC_KEY' /tmp/secrets.txt && HAS_PUBLIC=1 || true
+          grep -q 'VAPID_PRIVATE_KEY' /tmp/secrets.txt && HAS_PRIVATE=1 || true
+          if [ "$HAS_PUBLIC" != "$HAS_PRIVATE" ]; then
+            echo "::error::O projeto possui apenas uma das chaves VAPID. Corrija o par antes do deploy para não invalidar notificações."
+            exit 3
+          fi
+          if [ "$HAS_PUBLIC" = 0 ]; then
+            node scripts/generate-vapid.mjs > /tmp/vapid.env
+            set -a
+            . /tmp/vapid.env
+            set +a
+            printf '%s' "$VAPID_PUBLIC_KEY" | npx wrangler pages secret put VAPID_PUBLIC_KEY --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
+            printf '%s' "$VAPID_PRIVATE_KEY" | npx wrangler pages secret put VAPID_PRIVATE_KEY --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
+          fi
+      - name: Build de produção
+        run: npm run build
+      - name: Publicar Pages + Functions
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          npx wrangler pages deploy dist \
+            --project-name ritmo-commercial \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --config wrangler.deploy.jsonc
+      - name: Validar produção
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          BASE='https://ritmo-commercial.pages.dev'
+          OK=0
+          for i in {1..30}; do
+            IDX=$(curl -fsS -o /tmp/index.html -w '%{http_code}' "$BASE/?release=$GITHUB_SHA" || true)
+            HLT=$(curl -fsS -o /tmp/health.json -w '%{http_code}' "$BASE/api/health?release=$GITHUB_SHA" || true)
+            MAN=$(curl -fsS -o /tmp/manifest.webmanifest -w '%{http_code}' "$BASE/manifest.webmanifest?release=$GITHUB_SHA" || true)
+            SW=$(curl -fsS -o /tmp/sw.js -w '%{http_code}' "$BASE/sw.js?release=$GITHUB_SHA" || true)
+            if [ "$IDX" = 200 ] && [ "$HLT" = 200 ] && [ "$MAN" = 200 ] && [ "$SW" = 200 ] && grep -q '"ok":true' /tmp/health.json && grep -q 'standalone' /tmp/manifest.webmanifest; then
+              OK=1
+              break
+            fi
+            sleep 4
+          done
+          test "$OK" = 1
+          echo "### ✅ Ritmo publicado" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://ritmo-commercial.pages.dev" >> "$GITHUB_STEP_SUMMARY"
