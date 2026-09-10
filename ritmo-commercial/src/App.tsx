@@ -89,6 +89,12 @@ export default function App() {
   },[authenticated]);
 
   useEffect(()=>{
+    const open=Boolean(modal||sheetOpen);
+    document.body.classList.toggle('mobile-overlay-open',open);
+    return()=>document.body.classList.remove('mobile-overlay-open');
+  },[modal,sheetOpen]);
+
+  useEffect(()=>{
     document.body.classList.toggle('auth-active',!authenticated);
     const shell=document.getElementById('appShell');
     if(!authenticated){shell?.setAttribute('inert','');shell?.setAttribute('aria-hidden','true');}else{shell?.removeAttribute('inert');shell?.removeAttribute('aria-hidden');}
@@ -1869,12 +1875,12 @@ export default function App() {
 
     </section>
     <div id='modalBackdrop' className={`modal-backdrop ${modal ? "show" : ""}`.trim()} onClick={handleClick} onInput={handleInput} onChange={handleInput}>
-      <div className='modal liquid' id='modalBox'>
+      <div className='modal liquid' id='modalBox' role='dialog' aria-modal='true'>
         {renderModal()}
       </div>
     </div>
     <div id='sheetBackdrop' className={`sheet-backdrop ${sheetOpen ? "show" : ""}`.trim()} onClick={handleClick} onInput={handleInput} onChange={handleInput}>
-      <div className='modal liquid' id='sheetBox' style={{width: 'min(520px,100%)'} as React.CSSProperties}>
+      <div className='modal liquid' id='sheetBox' role='dialog' aria-modal='true' style={{width: 'min(520px,100%)'} as React.CSSProperties}>
         <div className='modal-top'>
           <h3>
             Menu
