@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createIcons, icons } from 'lucide';
 import { api, ApiError, clearLocalAuth, persistAuth, type AuthResponse } from './services/api';
-import { canInstallPWA, enablePushNotifications, installPWA, isBiometricsAvailable, isNativeApp, loginWithBiometrics, registerBiometrics, shouldGateNativeSession, subscribePWAInstallAvailability, unlockNativeSession } from './services/nativeDevice';
+import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, isNativeApp, loginWithBiometrics, registerBiometrics, shouldGateNativeSession, subscribeBiometricAvailability, subscribePWAInstallAvailability, unlockNativeSession } from './services/nativeDevice';
 import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction } from './types';
 
 type Page = 'home'|'transactions'|'debts'|'calendar'|'goals'|'reports'|'profile'|'settings';
@@ -34,6 +34,7 @@ export default function App() {
   const [form,setForm]=useState<FormState>({});
   const [loading,setLoading]=useState(false);
   const [pwaInstallReady,setPwaInstallReady]=useState(()=>canInstallPWA());
+  const [biometricAvailable,setBiometricAvailable]=useState(false);
   const [recoveryCode,setRecoveryCode]=useState('');
   const [pendingDeviceVerification,setPendingDeviceVerification]=useState('');
   const [pendingActivationToken,setPendingActivationToken]=useState('');
@@ -57,6 +58,21 @@ export default function App() {
   const applyAuth=useCallback(async(out:AuthResponse)=>{await persistAuth(out);setAuthenticated(true);setAuthView('login');await refresh();},[refresh]);
 
   useEffect(()=>subscribePWAInstallAvailability(() => setPwaInstallReady(canInstallPWA())),[]);
+
+  useEffect(()=>{
+    let dispose: (()=>void)|undefined;
+    let active=true;
+    (async()=>{
+      try{
+        const info=await getBiometricAvailability();
+        if(active)setBiometricAvailable(info.available);
+        dispose=await subscribeBiometricAvailability((available)=>{ if(active)setBiometricAvailable(available); });
+      }catch{
+        if(active)setBiometricAvailable(false);
+      }
+    })();
+    return()=>{active=false;dispose?.();};
+  },[]);
 
   useEffect(()=>{
     let live=true;
@@ -237,7 +253,7 @@ export default function App() {
     if(modal.kind==='goal-add'){const g=goals.find(x=>x.id===modal.id);return shell('Adicionar valor',<div className="modal-form"><div className="row"><div className="row-main"><strong>{g?.name}</strong><small>Atual: {money(g?.saved||0)}</small></div></div>{input('goalAddValue','Valor','text',{inputMode:'decimal'})}<button className="premium-btn btn-primary" id="confirmGoalAdd" style={{height:48}}>Adicionar</button></div>);}
     if(modal.kind==='edit-profile')return shell('Editar perfil',<div className="modal-form">{input('profileDisplayName','Nome de exibição')}<button className="premium-btn btn-primary" id="saveProfile" style={{height:48}}>Salvar alterações</button></div>);
     if(modal.kind==='change-password')return shell('Alterar senha',<div className="modal-form">{input('currentPass','Senha atual','password',{autoComplete:'current-password'})}{input('newPass','Nova senha','password',{autoComplete:'new-password'})}{input('newPass2','Confirmar nova senha','password',{autoComplete:'new-password'})}<button className="premium-btn btn-primary" id="savePassword" style={{height:48}}>Atualizar senha</button></div>);
-    if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{isBiometricsAvailable()&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide="scan-face"></i>Ativar biometria neste aparelho</button>}</div>);
+    if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{biometricAvailable&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide="scan-face"></i>Ativar biometria neste aparelho</button>}</div>);
     if(modal.kind==='new-recovery-code')return shell('Novo código de recuperação',<div className="modal-form"><div className="recovery-code-box"><span>Seu novo código</span><code id="modalRecoveryCode">{recoveryCode}</code></div><div className="recovery-note"><i data-lucide="shield-check"></i><span>Anote ou copie agora. O código anterior deixou de funcionar.</span></div><button className="premium-btn btn-primary" id="copyModalRecovery" style={{height:48}}>Copiar código</button></div>);
     if(modal.kind==='privacy')return shell('Privacidade e dispositivo',<div className="list"><div className="row"><div className="row-main"><strong>Sincronização protegida</strong><small>Dados financeiros ficam sincronizados no D1; biometria permanece no autenticador do aparelho.</small></div></div><div className="row"><div className="row-main"><strong>Notificações push</strong><small>Ative alertas nativos para vencimentos e metas.</small></div><button className="premium-btn btn-glass" id="enablePush" style={{height:36,padding:'0 11px'}}>Ativar</button></div><div className="row"><div className="row-main"><strong>Instalar PWA</strong><small>Instale o Ritmo como aplicativo no aparelho.</small></div><button className="premium-btn btn-glass" id="installPwa" style={{height:36,padding:'0 11px'}} disabled={!pwaInstallReady}>Instalar</button></div></div>);
     if(modal.kind==='categories')return shell('Categorias',<div className="list"><div className="row"><div className="row-main"><strong>Categorias livres</strong><small>Informe a categoria ao criar cada movimentação ou dívida.</small></div></div></div>);
@@ -1616,7 +1632,7 @@ export default function App() {
               Entrar 
               <i data-lucide='arrow-right'></i>
             </button>
-            {isBiometricsAvailable() && (
+            {biometricAvailable && (
               <button className='premium-btn btn-glass biometric-login-btn' id='biometricLogin' type='button'>
                 <i data-lucide='scan-face'></i>
                 Entrar com biometria
