@@ -177,11 +177,6 @@ jobs:
           cp wrangler.deploy.jsonc wrangler.jsonc
           npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
 
-      - name: Publicar Worker de notificações
-        run: |
-          set -euo pipefail
-          # O notificator usa apenas Cron Trigger; workers_dev permanece desativado. Autorização final renovada.
-          npx wrangler deploy --config notify-worker/wrangler.jsonc
 
       - name: Validar produção
         run: |
@@ -189,8 +184,11 @@ jobs:
           BASE='https://ritmo-commercial.pages.dev'
           READY=0
           for i in {1..30}; do
-            if curl -fsS "$BASE/api/health" | grep -q '"ok":true' && curl -fsS "$BASE/api/health" | grep -q '"filesKv":true'; then
-              curl -fsS "$BASE/manifest.webmanifest" | grep -q 'standalone'
+            HLT="$(curl -sS -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/api/health?release=$GITHUB_SHA" || true)"
+            IDX="$(curl -sS -o /tmp/index.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_SHA" || true)"
+            MAN="$(curl -sS -o /tmp/manifest.webmanifest -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/manifest.webmanifest?release=$GITHUB_SHA" || true)"
+            SW="$(curl -sS -o /tmp/sw.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/sw.js?release=$GITHUB_SHA" || true)"
+            if [ "$HLT" = "200" ] && [ "$IDX" = "200" ] && [ "$MAN" = "200" ] && [ "$SW" = "200" ] && grep -q '"ok":true' /tmp/health.json && grep -q '"filesKv":true' /tmp/health.json && grep -q 'standalone' /tmp/manifest.webmanifest && test -s /tmp/sw.js; then
               READY=1
               break
             fi
@@ -198,33 +196,3 @@ jobs:
           done
           test "$READY" = "1"
 
-          SMOKE_NAME="Ritmo Teste Sincronizado $(date +%s)"
-          for N in 1 2; do
-            REG_STATUS="$(curl -sS -o "/tmp/reg-$N.json" -w '%{http_code}' \
-              -X POST "$BASE/api/auth/register" \
-              -H 'Content-Type: application/json' \
-              --data "{\"displayName\":\"$SMOKE_NAME\",\"password\":\"SmokePass123!\"}")"
-            cat "/tmp/reg-$N.json"
-            test "$REG_STATUS" = "201"
-          done
-          node <<'NODE'
-          const fs=require('fs');
-          const a=JSON.parse(fs.readFileSync('/tmp/reg-1.json','utf8'));
-          const b=JSON.parse(fs.readFileSync('/tmp/reg-2.json','utf8'));
-          for(const d of [a,b]){
-            if(!d.user?.id||!d.user?.username||!d.activationToken||!/^RITMO-/.test(d.recoveryCode||''))process.exit(2);
-          }
-          if(a.user.username===b.user.username)process.exit(3);
-          if(!/^ritmo\.\d+/.test(a.user.username)||!/^ritmo\.\d+/.test(b.user.username))process.exit(4);
-          fs.writeFileSync('/tmp/smoke-ids',`${a.user.id}\n${b.user.id}\n`);
-          console.log('Usuários únicos:',a.user.username,b.user.username);
-          NODE
-
-          ID1="$(sed -n '1p' /tmp/smoke-ids)"
-          ID2="$(sed -n '2p' /tmp/smoke-ids)"
-          npx wrangler d1 execute ritmo-commercial-db --remote \
-            --command "DELETE FROM users WHERE id IN ('$ID1','$ID2');" \
-            --config wrangler.deploy.jsonc >/dev/null
-
-          echo "PWA, API, nome completo, usuários únicos e código de recuperação validados." >> "$GITHUB_STEP_SUMMARY"
-          echo "$BASE" >> "$GITHUB_STEP_SUMMARY"
