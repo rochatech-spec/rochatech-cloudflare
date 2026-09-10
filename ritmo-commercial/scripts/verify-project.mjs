@@ -85,3 +85,15 @@ assert(app.includes("window.addEventListener('online',onOnline)"), 'Sincronizaç
 assert(app.includes("document.addEventListener('visibilitychange',onVisibility)"), 'Sincronização ao voltar para primeiro plano ausente.');
 assert(!vite.includes("ritmo-bootstrap-offline"), 'Bootstrap autenticado não deve ser cacheado entre sessões.');
 assert(worker.includes("username:pr.username"), 'Bootstrap deve sincronizar o username real.');
+
+
+assert(api.includes("register: (body: { displayName: string; password: string })"), 'Cliente deve cadastrar por nome completo.');
+assert(worker.includes('usernameBaseFromName'), 'Worker deve gerar username a partir do nome.');
+assert(worker.includes('usernameCandidate'), 'Worker deve resolver colisões de username.');
+assert(worker.includes("UNIQUE constraint failed: users.username"), 'Cadastro deve tratar colisão atômica de username.');
+assert(schema.includes('username TEXT NOT NULL UNIQUE COLLATE NOCASE'), 'Banco deve impedir usernames duplicados.');
+assert(app.includes("id='syncNowBtn'"), 'Botão Atualizar desktop ausente.');
+assert(app.includes("id='mobileSync'"), 'Botão Atualizar mobile ausente.');
+assert(app.includes("className='generated-user-box'"), 'Usuário gerado deve ser exibido no primeiro acesso.');
+assert(app.includes("api.register({displayName,password})"), 'Primeiro acesso deve enviar nome completo ao servidor.');
+assert(worker.includes("request.method==='GET'") && worker.includes("original_name AS name"), 'Listagem sincronizada de arquivos ausente.');
