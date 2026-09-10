@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createIcons, icons } from 'lucide';
 import { api, ApiError, clearLocalAuth, persistAuth, type AuthResponse } from './services/api';
-import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, isNativeApp, loginWithBiometrics, registerBiometrics, shouldGateNativeSession, subscribeBiometricAvailability, subscribePWAInstallAvailability, unlockNativeSession } from './services/nativeDevice';
+import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, isNativeApp, loginWithBiometrics, registerBiometrics, shouldGateNativeSession, subscribeBiometricAvailability, subscribePWAInstallAvailability, syncNativeFinancialNotifications, unlockNativeSession } from './services/nativeDevice';
 import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction } from './types';
 
 type Page = 'home'|'transactions'|'debts'|'calendar'|'goals'|'reports'|'profile'|'settings';
@@ -137,6 +137,11 @@ export default function App() {
       window.removeEventListener('online',onOnline);
     };
   },[authenticated,refresh,notify]);
+
+  useEffect(()=>{
+    if(!authenticated)return;
+    void syncNativeFinancialNotifications(data,profile).catch(()=>{});
+  },[authenticated,transactions,debts,goals,profile]);
 
   useEffect(()=>{
     if(!authenticated)return;
