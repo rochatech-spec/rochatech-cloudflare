@@ -1,7 +1,7 @@
 import type { Bootstrap, Debt, DebtPayment, EventItem, Goal, GoalContribution, Profile, Transaction, AuthUser, StoredFile } from '../types';
-import { clearSessionToken, getAuthTokens, isNativeApp, setDeviceToken as persistDeviceToken, setLastUsername, setSessionToken as persistSessionToken } from './authStorage';
+import { clearSessionToken, getAuthTokens, setDeviceToken as persistDeviceToken, setSessionToken as persistSessionToken } from './authStorage';
 
-const API_URL = (import.meta.env.VITE_API_URL || (isNativeApp() ? 'https://ritmo-commercial.pages.dev/api' : '/api')).replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
 export class ApiError extends Error {
   status: number;
@@ -16,14 +16,6 @@ export async function setDeviceToken(token?: string) { await persistDeviceToken(
 export async function setSessionToken(token?: string) { await persistSessionToken(token); }
 export async function clearLocalAuth() { await clearSessionToken(); }
 
-async function platformFetch(url: string, init: RequestInit = {}) {
-  if (isNativeApp()) {
-    const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
-    return tauriFetch(url, init);
-  }
-  return fetch(url, init);
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
@@ -36,7 +28,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (deviceToken) headers.set('X-Device-Token', deviceToken);
   let response: Response;
   try {
-    response = await platformFetch(`${API_URL}${path}`, { ...init, headers, cache: 'no-store' });
+    response = await fetch(`${API_URL}${path}`, { ...init, headers, cache: 'no-store' });
   } catch (error) {
     throw new ApiError('Sem conexão com o servidor. Seus dados poderão ser sincronizados quando a conexão voltar.', 0, 'NETWORK_ERROR', error);
   }
@@ -56,7 +48,6 @@ export async function persistAuth(auth: AuthResponse) {
   await Promise.all([
     setSessionToken(auth.sessionToken),
     setDeviceToken(auth.deviceToken),
-    setLastUsername(auth.user.username),
   ]);
 }
 
@@ -127,7 +118,7 @@ export const api = {
     if (sessionToken) headers.set('Authorization', `Bearer ${sessionToken}`);
     if (deviceToken) headers.set('X-Device-Token', deviceToken);
     let r: Response;
-    try { r = await platformFetch(`${API_URL}/files/${encodeURIComponent(id)}`, { headers, cache: 'no-store' }); }
+    try { r = await fetch(`${API_URL}/files/${encodeURIComponent(id)}`, { headers, cache: 'no-store' }); }
     catch (error) { throw new ApiError('Sem conexão com o servidor.', 0, 'NETWORK_ERROR', error); }
     if (!r.ok) throw new ApiError('Não foi possível baixar o arquivo.', r.status);
     return r.blob();
