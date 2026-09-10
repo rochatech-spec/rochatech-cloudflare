@@ -3,7 +3,7 @@ name: Ritmo Commercial • Cloudflare Device Node Deploy
 
 on:
   push:
-    branches: [ritmo-commercial-bootstrap]
+    branches: [ritmo-commercial-bootstrap, main]
     paths:
       - ".github/workflows/ritmo-cloudflare-device-node.yml"
   workflow_dispatch:
@@ -170,16 +170,32 @@ jobs:
           npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
 
       - name: Validar produção
-        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
           BASE='https://ritmo-commercial.pages.dev'
+          READY=0
           for i in {1..30}; do
             if curl -fsS "$BASE/api/health" | grep -q '"ok":true'; then
               curl -fsS "$BASE/manifest.webmanifest" | grep -q 'standalone'
-              echo "$BASE" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
+              READY=1
+              break
             fi
             sleep 4
           done
-          exit 1
+          test "$READY" = "1"
+
+          SMOKE_USER="smoke.$(date +%s)"
+          REG_STATUS="$(curl -sS -o /tmp/reg.json -w '%{http_code}' \
+            -X POST "$BASE/api/auth/register" \
+            -H 'Content-Type: application/json' \
+            --data "{\"username\":\"$SMOKE_USER\",\"password\":\"SmokePass123!\"}")"
+          cat /tmp/reg.json
+          test "$REG_STATUS" = "201"
+          node -e "const d=require('/tmp/reg.json');if(!d.activationToken||!/^RITMO-/.test(d.recoveryCode||''))process.exit(2)"
+
+          npx wrangler d1 execute ritmo-commercial-db --remote \
+            --command "DELETE FROM users WHERE username='$SMOKE_USER';" \
+            --config wrangler.deploy.jsonc >/dev/null
+
+          echo "PWA, API e geração do código de recuperação validados." >> "$GITHUB_STEP_SUMMARY"
+          echo "$BASE" >> "$GITHUB_STEP_SUMMARY"
