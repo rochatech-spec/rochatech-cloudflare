@@ -197,4 +197,4 @@ jobs:
           test "$READY" = "1"
 
 
-# fab-black-deploy-auth: 2026-09-10-v1
+# fab-black-deploy-auth: 2026-09-10-v2
