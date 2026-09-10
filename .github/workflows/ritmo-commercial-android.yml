@@ -2,7 +2,7 @@ name: Ritmo Commercial • Android APK
 
 on:
   push:
-    branches: [ritmo-commercial-bootstrap, main, ritmo-functional-hotfix-20260910]
+    branches: [ritmo-commercial-bootstrap, main, ritmo-functional-hotfix-20260910, ritmo-finalize-20260910]
     paths:
       - ".github/workflows/ritmo-commercial-android.yml"
       - "ritmo-commercial/src/**"
