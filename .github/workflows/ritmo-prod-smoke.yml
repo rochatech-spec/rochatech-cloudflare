@@ -1,0 +1,31 @@
+name: Ritmo Commercial • Production Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-prod-smoke.yml"
+      - "ritmo-commercial/src/**"
+      - "ritmo-commercial/wrangler.jsonc"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health
+        run: |
+          set -euo pipefail
+          curl -fsS https://ritmo-commercial.pages.dev/api/health | tee /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
+
+      - name: Validar infraestrutura via registro inválido
+        run: |
+          set -euo pipefail
+          STATUS="$(curl -sS -o /tmp/register.json -w '%{http_code}' \
+            -X POST https://ritmo-commercial.pages.dev/api/auth/register \
+            -H 'Content-Type: application/json' \
+            --data '{"username":"x","password":"12345678"}')"
+          cat /tmp/register.json
+          test "$STATUS" = "400"
+          grep -q '"code":"INVALID_USERNAME"' /tmp/register.json
