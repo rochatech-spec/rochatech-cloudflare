@@ -23,14 +23,48 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Solicitar autorização Cloudflare
+
+      - name: Gerar código Cloudflare
+        shell: bash
         run: |
           set -euo pipefail
-          timeout 330s npx -y wrangler@4.130.0 login --device --browser=false
+          LOG="$RUNNER_TEMP/cloudflare-login.log"
+          nohup npx -y wrangler@4.130.0 login --device --browser=false >"$LOG" 2>&1 &
+          echo $! > "$RUNNER_TEMP/cloudflare-login.pid"
+          for i in $(seq 1 45); do
+            if grep -Eq 'user_code=|enter the code:' "$LOG"; then
+              break
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+
+      - name: Aguardar aprovação Cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/cloudflare-login.log"
+          PID="$(cat "$RUNNER_TEMP/cloudflare-login.pid")"
+          for i in $(seq 1 300); do
+            if grep -qi 'Successfully logged in' "$LOG"; then
+              cat "$LOG"
+              exit 0
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$LOG"
+          exit 1
+
       - name: Confirmar conta Cloudflare
         run: npx -y wrangler@4.130.0 whoami --json > /tmp/whoami.json
+
       - name: Instalar dependências
         run: npm install --no-audit --no-fund
+
       - name: Preparar recursos Cloudflare
         run: |
           set -euo pipefail
