@@ -12,6 +12,8 @@ const api = read('src/services/api.ts');
 const schema = read('schema.sql');
 const vite = read('vite.config.ts');
 const wrangler = read('wrangler.jsonc');
+const tauri = read('src-tauri/tauri.conf.json');
+const cargo = read('src-tauri/Cargo.toml');
 const original = read('reference/ritmo_comercial_leve.html');
 
 const body = original.match(/<body[^>]*>([\s\S]*?)<script[\s>]/i)?.[1] || '';
@@ -46,7 +48,9 @@ for (const required of [
   '.modal-backdrop.show{display:flex!important;pointer-events:auto!important}',
 ]) assert.ok(css.includes(required), `Patch de camadas/transição ausente: ${required}`);
 
-assert.ok(api.includes("Capacitor.isNativePlatform() ? 'https://ritmo-commercial.pages.dev/api' : '/api'"), 'API do APK não possui fallback seguro para Cloudflare.');
+assert.ok(api.includes("isNativeApp() ? 'https://ritmo-commercial.pages.dev/api' : '/api'"), 'API nativa não possui fallback seguro para Cloudflare.');
+assert.ok(api.includes("@tauri-apps/plugin-http"), 'APK deve usar HTTP nativo do Tauri.');
+assert.equal(api.includes('@capacitor/'), false, 'API ainda contém dependência do Capacitor.');
 assert.ok(api.includes("X-Idempotency-Key"), 'Cliente sem chave de idempotência.');
 for (const route of ['/auth/register','/auth/register/confirm','/auth/login','/auth/device/verify','/auth/recover','/auth/passkeys','/bootstrap','/transactions','/debts','/goals','/events','/files','/health']) {
   assert.ok(worker.includes(route), `Rota obrigatória ausente: ${route}`);
@@ -58,10 +62,14 @@ assert.ok(vite.includes("navigateFallbackDenylist: [/^\\/api\\//]"), 'Service Wo
 assert.ok(vite.includes('ritmo-data-post-queue'), 'Background Sync de dados não configurado.');
 const native = read('src/services/nativeDevice.ts');
 const storage = read('src/services/authStorage.ts');
-for (const plugin of ['@capacitor/camera','@capacitor/geolocation','@capacitor/share','@capacitor/local-notifications']) {
-  assert.ok(native.includes(plugin), `Integração nativa ausente: ${plugin}`);
+for (const plugin of ['@tauri-apps/plugin-biometric','@tauri-apps/plugin-geolocation','@tauri-apps/plugin-notification']) {
+  assert.ok(native.includes(plugin), `Integração Tauri ausente: ${plugin}`);
 }
-assert.ok(storage.includes('@aparajita/capacitor-secure-storage'), 'Tokens nativos não estão no armazenamento seguro.');
+assert.ok(storage.includes('@tauri-apps/plugin-stronghold'), 'Tokens nativos devem usar Stronghold.');
+assert.equal(native.includes('@capacitor/'), false, 'nativeDevice ainda contém dependência do Capacitor.');
+assert.equal(storage.includes('@capacitor/'), false, 'authStorage ainda contém dependência do Capacitor.');
+assert.ok(tauri.includes('br.com.ritmo.gestaofinanceira'), 'Bundle Android do Tauri ausente.');
+assert.ok(cargo.includes('tauri-plugin-http') && cargo.includes('tauri-plugin-notification'), 'Plugins Rust do Tauri incompletos.');
 assert.ok(worker.includes('RECOVERY_PEPPER'), 'Código de recuperação não usa segredo de servidor.');
 assert.ok(worker.includes("'NEW_DEVICE_RECOVERY_REQUIRED'") || worker.includes("requiresDeviceVerification:true"), 'Fluxo de novo aparelho não exige verificação.');
 console.log(`OK: ${originalIds.length} IDs estáticos preservados; autenticação, camadas, API, banco e PWA validados estaticamente.`);
@@ -103,3 +111,22 @@ assert(worker.includes("'USERNAME_IMMUTABLE'"), 'API deve rejeitar alteração d
 assert(worker.includes("hasOwnProperty.call(b,'username')"), 'Perfil deve bloquear username enviado manualmente.');
 assert(api.includes("Partial<Pick<Profile,'displayName'|'theme'|'dueNotifications'|'goalNotifications'>>"), 'Cliente não deve expor username como campo editável.');
 assert(app.includes('Permanente. O nome de usuário não pode ser alterado.'), 'Interface deve informar que o username é permanente.');
+
+
+assert(schema.includes("status TEXT NOT NULL DEFAULT 'posted'"), 'Transações devem persistir status pending/posted.');
+assert(worker.includes("/transactions\\/([^/]+)\\/post"), 'API deve permitir dar baixa em movimentação pendente.');
+assert(api.includes("postTransaction:"), 'Cliente deve expor ação Dar baixa.');
+assert(api.includes("updateTransaction:") && api.includes("deleteTransaction:"), 'CRUD de movimentações incompleto.');
+assert(api.includes("updateDebt:") && api.includes("deleteDebt:"), 'CRUD de dívidas incompleto.');
+assert(api.includes("updateGoal:") && api.includes("deleteGoal:"), 'CRUD de metas incompleto.');
+assert(api.includes("updateEvent:") && api.includes("deleteEvent:"), 'CRUD de eventos incompleto.');
+assert(app.includes("Pendente") && app.includes("Dar baixa"), 'Interface deve separar saldo atual de saldo pendente.');
+assert(app.includes("edit-transaction") && app.includes("delete-transaction"), 'Ações de movimentação ausentes.');
+assert(app.includes("edit-debt") && app.includes("delete-debt"), 'Ações de dívida ausentes.');
+assert(app.includes("edit-goal") && app.includes("delete-goal"), 'Ações de meta ausentes.');
+assert(app.includes("edit-event") && app.includes("delete-event"), 'Ações de evento ausentes.');
+assert(app.includes("syncNativeFinancialNotifications"), 'Notificações financeiras nativas não estão sincronizadas.');
+assert(css.includes("RITMO • RESPONSIVE DESKTOP + MOBILE FINAL"), 'Camada responsiva final ausente.');
+assert(css.includes("body.sidebar-collapsed .sidebar{width:var(--sidebar-collapsed)!important}"), 'Sidebar retrátil desktop ausente.');
+assert(app.includes("desktopViewport") && app.includes("!desktopViewport"), 'Biometria deve ficar oculta no desktop.');
+assert(app.includes("desktop-logout-btn") && app.includes("mobile-logout-row"), 'Botão Sair visível deve existir em desktop e mobile.');
