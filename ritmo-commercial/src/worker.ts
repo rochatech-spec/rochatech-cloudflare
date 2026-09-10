@@ -319,6 +319,9 @@ async function handleData(request:Request,env:Env,path:string){
   if(path==='/bootstrap'&&request.method==='GET') return json(await bootstrap(env,uid));
   if(path==='/profile'&&request.method==='PATCH'){
     const b=await body<any>(request),sets:string[]=[],vals:any[]=[];
+    if(Object.prototype.hasOwnProperty.call(b,'username')){
+      return error('O nome de usuário é permanente e não pode ser alterado.',409,'USERNAME_IMMUTABLE');
+    }
     if(typeof b.displayName==='string'&&b.displayName.trim()){ await env.DB.prepare('UPDATE users SET display_name=?,updated_at=? WHERE id=?').bind(b.displayName.trim().slice(0,80),ts,uid).run(); }
     if(['light','dark','system'].includes(b.theme)){sets.push('theme=?');vals.push(b.theme)} if(typeof b.dueNotifications==='boolean'){sets.push('due_notifications=?');vals.push(b.dueNotifications?1:0)} if(typeof b.goalNotifications==='boolean'){sets.push('goal_notifications=?');vals.push(b.goalNotifications?1:0)}
     if(sets.length){vals.push(ts,uid);await env.DB.prepare(`UPDATE profiles SET ${sets.join(',')},updated_at=? WHERE user_id=?`).bind(...vals).run();}
