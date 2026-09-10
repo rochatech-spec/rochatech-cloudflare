@@ -64,6 +64,23 @@ async function safeEqual(a:string,b:string) {
 async function verifyPassword(password:string,user:UserRow) { const h=await hashPassword(password,user.password_salt); return safeEqual(h.hash,user.password_hash); }
 function normalizeUsername(value:unknown) { return String(value||'').trim().toLowerCase(); }
 function validUsername(u:string){ return /^[a-z0-9._-]{3,40}$/i.test(u); }
+function normalizeDisplayName(value:unknown){
+  return String(value||'').trim().replace(/\s+/g,' ').slice(0,100);
+}
+function usernameBaseFromName(displayName:string){
+  const ascii=displayName.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const parts=ascii.replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length)return 'usuario';
+  const first=parts[0];
+  const last=parts.length>1?parts[parts.length-1]:'';
+  const raw=last&&last!==first?`${first}.${last}`:first;
+  return (raw.replace(/[^a-z0-9.]/g,'').replace(/^\.+|\.+$/g,'')||'usuario').slice(0,40);
+}
+function usernameCandidate(base:string,index:number){
+  const suffix=index===0?'':String(index+1);
+  const head=base.slice(0,Math.max(3,40-suffix.length));
+  return `${head}${suffix}`;
+}
 function validPassword(p:string){ return p.length>=8 && p.length<=128; }
 function validDate(value:unknown){
   const s=String(value||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -173,21 +190,37 @@ async function handleAuth(request:Request,env:Env,path:string){
     const ctx=await auth(request,env); return ctx ? json({authenticated:true,user:{id:ctx.user.id,username:ctx.user.username,displayName:ctx.user.display_name}}) : json({authenticated:false});
   }
   if(path==='/auth/register' && request.method==='POST'){
-    await rateLimit(request,env,'register',6); const b=await body(request); const username=normalizeUsername(b.username),password=String(b.password||'');
-    if(!validUsername(username)) return error('Use um usuário de 3 a 40 caracteres com letras, números, ponto, hífen ou sublinhado.',400,'INVALID_USERNAME');
-    if(!validPassword(password)) return error('A senha precisa ter entre 8 e 128 caracteres.',400,'INVALID_PASSWORD');
-    const existing=await userByUsername(env,username); if(existing?.activated_at) return error('Este usuário já existe.',409,'USERNAME_EXISTS');
-    const code=await recoveryCode(username), rh=await recoveryHash(code,env), ph=await hashPassword(password),id=existing?.id||uuid(),ts=now();
-    if(existing){
-      await env.DB.prepare('UPDATE users SET display_name=?,password_hash=?,password_salt=?,recovery_hash=?,updated_at=? WHERE id=?').bind(username,ph.hash,ph.salt,rh,ts,id).run();
-    }else{
-      await env.DB.batch([
-        env.DB.prepare('INSERT INTO users(id,username,display_name,password_hash,password_salt,recovery_hash,activated_at,created_at,updated_at) VALUES(?,?,?,?,?,?,NULL,?,?)').bind(id,username,username,ph.hash,ph.salt,rh,ts,ts),
-        env.DB.prepare('INSERT INTO profiles(user_id,theme,due_notifications,goal_notifications,updated_at) VALUES(?,?,?,?,?)').bind(id,'system',1,1,ts),
-      ]);
+    await rateLimit(request,env,'register',6);
+    const b=await body(request);
+    const displayName=normalizeDisplayName(b.displayName||b.name||b.username);
+    const password=String(b.password||'');
+    if(displayName.length<2)return error('Informe seu nome completo.',400,'INVALID_DISPLAY_NAME');
+    if(!validPassword(password))return error('A senha precisa ter entre 8 e 128 caracteres.',400,'INVALID_PASSWORD');
+
+    const ph=await hashPassword(password),base=usernameBaseFromName(displayName),ts=now();
+    let created:{id:string;username:string;recoveryCode:string}|null=null;
+
+    for(let index=0;index<1000&&!created;index++){
+      const username=usernameCandidate(base,index);
+      if(!validUsername(username))continue;
+      const id=uuid(),code=await recoveryCode(username),rh=await recoveryHash(code,env);
+      try{
+        await env.DB.batch([
+          env.DB.prepare('INSERT INTO users(id,username,display_name,password_hash,password_salt,recovery_hash,activated_at,created_at,updated_at) VALUES(?,?,?,?,?,?,NULL,?,?)').bind(id,username,displayName,ph.hash,ph.salt,rh,ts,ts),
+          env.DB.prepare('INSERT INTO profiles(user_id,theme,due_notifications,goal_notifications,updated_at) VALUES(?,?,?,?,?)').bind(id,'system',1,1,ts),
+        ]);
+        created={id,username,recoveryCode:code};
+      }catch(e:any){
+        const message=String(e?.message||e);
+        if(/UNIQUE constraint failed: users\.username/i.test(message))continue;
+        throw e;
+      }
     }
-    const activationToken=randomToken(24); await env.SESSION_KV.put(`activate:${activationToken}`,JSON.stringify({userId:id}),{expirationTtl:60*30});
-    return json({user:{id,username,displayName:username},activationToken,recoveryCode:code},201);
+
+    if(!created)return error('Não foi possível gerar um usuário único. Tente novamente.',503,'USERNAME_GENERATION_FAILED');
+    const activationToken=randomToken(24);
+    await env.SESSION_KV.put(`activate:${activationToken}`,JSON.stringify({userId:created.id}),{expirationTtl:60*30});
+    return json({user:{id:created.id,username:created.username,displayName},activationToken,recoveryCode:created.recoveryCode},201);
   }
   if(path==='/auth/register/confirm' && request.method==='POST'){
     const b=await body(request),token=String(b.activationToken||''),pending=await env.SESSION_KV.get<{userId:string}>(`activate:${token}`,'json');
