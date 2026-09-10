@@ -56,6 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      CLOUDFLARE_ACCOUNT_ID: 83fb94d06af817cd5715cd691bb23997
       DEVICE_CODE: ${{ needs.request.outputs.device_code }}
       POLL_INTERVAL: ${{ needs.request.outputs.interval }}
       EXPIRES_IN: ${{ needs.request.outputs.expires_in }}
@@ -116,8 +117,6 @@ jobs:
       - name: Criar ou reutilizar D1 KV R2
         run: |
           set -euo pipefail
-          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
-          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID" >> "$GITHUB_ENV"
           npx wrangler d1 list --json --config wrangler.bootstrap.jsonc > /tmp/d1.json
           DB_ID="$(node -e "const a=require('/tmp/d1.json');const d=a.find(x=>x.name==='ritmo-commercial-db');if(d)process.stdout.write(d.uuid||d.id||'')")"
           if [ -z "$DB_ID" ]; then
