@@ -54,7 +54,17 @@ export default function App() {
   const setField=(id:string,value:string)=>setForm(f=>({...f,[id]:value}));
   const resetForm=(values:FormState={})=>setForm(values);
 
-  const refresh=useCallback(async()=>{ const next=await api.bootstrap(); setData(next); },[]);
+  const syncRef=useRef(false);
+  const refresh=useCallback(async()=>{
+    if(syncRef.current)return;
+    syncRef.current=true;
+    try{
+      const next=await api.bootstrap();
+      setData(next);
+    }finally{
+      syncRef.current=false;
+    }
+  },[]);
   const applyAuth=useCallback(async(out:AuthResponse)=>{await persistAuth(out);setAuthenticated(true);setAuthView('login');await refresh();},[refresh]);
 
   useEffect(()=>subscribePWAInstallAvailability(() => setPwaInstallReady(canInstallPWA())),[]);
@@ -90,6 +100,41 @@ export default function App() {
     })();
     return()=>{live=false};
   },[refresh,notify]);
+
+  useEffect(()=>{
+    if(!authenticated)return;
+
+    const sync=async()=>{
+      if(document.visibilityState==='hidden'||busyRef.current)return;
+      try{
+        await refresh();
+      }catch(e){
+        if(e instanceof ApiError&&(e.status===401||e.status===403)){
+          await clearLocalAuth();
+          setAuthenticated(false);
+          setData(emptyData);
+          setAuthView('login');
+          notify('Sua sessão expirou. Entre novamente.');
+        }
+      }
+    };
+
+    const onVisibility=()=>{if(document.visibilityState==='visible')void sync();};
+    const onFocus=()=>void sync();
+    const onOnline=()=>void sync();
+    const timer=window.setInterval(()=>void sync(),30000);
+
+    document.addEventListener('visibilitychange',onVisibility);
+    window.addEventListener('focus',onFocus);
+    window.addEventListener('online',onOnline);
+
+    return()=>{
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisibility);
+      window.removeEventListener('focus',onFocus);
+      window.removeEventListener('online',onOnline);
+    };
+  },[authenticated,refresh,notify]);
 
   useEffect(()=>{
     if(!authenticated)return;
