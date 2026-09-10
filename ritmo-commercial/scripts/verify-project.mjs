@@ -97,3 +97,9 @@ assert(app.includes("id='mobileSync'"), 'Botão Atualizar mobile ausente.');
 assert(app.includes("className='generated-user-box'"), 'Usuário gerado deve ser exibido no primeiro acesso.');
 assert(app.includes("api.register({displayName,password})"), 'Primeiro acesso deve enviar nome completo ao servidor.');
 assert(worker.includes("request.method==='GET'") && worker.includes("original_name AS name"), 'Listagem sincronizada de arquivos ausente.');
+
+
+assert(worker.includes("'USERNAME_IMMUTABLE'"), 'API deve rejeitar alteração do username.');
+assert(worker.includes("hasOwnProperty.call(b,'username')"), 'Perfil deve bloquear username enviado manualmente.');
+assert(api.includes("Partial<Pick<Profile,'displayName'|'theme'|'dueNotifications'|'goalNotifications'>>"), 'Cliente não deve expor username como campo editável.');
+assert(app.includes('Permanente. O nome de usuário não pode ser alterado.'), 'Interface deve informar que o username é permanente.');
