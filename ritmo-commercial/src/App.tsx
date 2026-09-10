@@ -547,7 +547,8 @@ export default function App() {
       case 'syncNowBtn':await manualRefresh();return;
       case 'searchBtn':
       case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;
-      case 'notifyBtn':setModal({kind:'notifications'});return;
+      case 'notifyBtn':
+      case 'mobileNotify':setModal({kind:'notifications'});return;
     }
 
     const action=button.dataset.action;
@@ -975,8 +976,6 @@ export default function App() {
     if(modal.kind==='change-password')return shell('Alterar senha',<div className="modal-form">{input('currentPass','Senha atual','password',{autoComplete:'current-password'})}{input('newPass','Nova senha','password',{autoComplete:'new-password'})}{input('newPass2','Confirmar nova senha','password',{autoComplete:'new-password'})}<button className="premium-btn btn-primary" id="savePassword" style={{height:48}}>Atualizar senha</button></div>);
     if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{biometricAvailable&&!desktopViewport&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide="scan-face"></i>Ativar biometria neste aparelho</button>}</div>);
     if(modal.kind==='new-recovery-code')return shell('Novo código de recuperação',<div className="modal-form"><div className="recovery-code-box"><span>Seu novo código</span><code id="modalRecoveryCode">{recoveryCode}</code></div><div className="recovery-note"><i data-lucide="shield-check"></i><span>Anote ou copie agora. O código anterior deixou de funcionar.</span></div><button className="premium-btn btn-primary" id="copyModalRecovery" style={{height:48}}>Copiar código</button></div>);
-    if(modal.kind==='privacy')return shell('Privacidade e dispositivo',<div className="list"><div className="row"><div className="row-main"><strong>Sincronização protegida</strong><small>Dados financeiros ficam no D1; arquivos ficam no Workers KV; biometria permanece no autenticador do aparelho.</small></div></div><div className="row"><div className="row-main"><strong>Notificações push</strong><small>Ative alertas nativos para vencimentos e metas.</small></div><button className="premium-btn btn-glass" id="enablePush" style={{height:36,padding:'0 11px'}}>Ativar</button></div><div className="row"><div className="row-main"><strong>Instalar PWA</strong><small>Instale o Ritmo como aplicativo no aparelho.</small></div><button className="premium-btn btn-glass" id="installPwa" style={{height:36,padding:'0 11px'}} disabled={!pwaInstallReady}>Instalar</button></div></div>);
-    if(modal.kind==='categories')return shell('Categorias',<div className="list"><div className="row"><div className="row-main"><strong>Categorias livres</strong><small>Informe a categoria ao criar cada movimentação ou dívida.</small></div></div></div>);
     if(modal.kind==='notifications'){
       const base=new Date(todayISO()+'T00:00:00');
       const daysUntil=(date:string)=>Math.ceil((new Date(date+'T00:00:00').getTime()-base.getTime())/86400000);
@@ -1147,15 +1146,12 @@ export default function App() {
             <div className='logo-surface'>
               <img alt='Ritmo' className='brand-logo' data-ritmo-logo='' src='/ritmo-logo.webp' />
             </div>
-            <div style={{display: 'flex', gap: '8px'} as React.CSSProperties}>
-              <button aria-label='Atualizar dados' className={`premium-btn btn-glass icon-btn sync-btn ${syncing ? "syncing" : ""}`.trim()} disabled={syncing} id='mobileSync' title='Atualizar e sincronizar'>
-                <i data-lucide='refresh-cw'></i>
-              </button>
-              <button className='premium-btn btn-glass icon-btn' id='mobileSearch'>
+            <div className='mobile-header-actions'>
+              <button aria-label='Buscar' className='premium-btn btn-glass icon-btn' id='mobileSearch'>
                 <i data-lucide='search'></i>
               </button>
-              <button className='premium-btn btn-glass icon-btn' id='mobileMore'>
-                <i data-lucide='menu'></i>
+              <button aria-label='Notificações' className='premium-btn btn-glass icon-btn' id='mobileNotify'>
+                <i data-lucide='bell'></i>
               </button>
             </div>
           </header>
@@ -2088,177 +2084,95 @@ export default function App() {
               </div>
               
 
-              <div className='profile-actions profile-actions-clean liquid-soft'>
-                
 
-                <button className='home-quick export-only' data-action='export'>
-                  <span className='home-quick-icon finaci-gold-soft'>
-                    <i data-lucide='download'></i>
-                  </span>
-                  <span>
-                    <strong>
-                      Exportar dados
-                    </strong>
-                    <small>
-                      Baixar resumo financeiro
-                    </small>
-                  </span>
-                </button>
-                
-
-              </div>
               
 
             </section>
             
 
             <section className={`page ${currentPage === 'settings' ? "active" : ""}`.trim()} id='page-settings'>
-              <div className='eyebrow'>
-                Personalização
-              </div>
-              <h1 className='h1'>
-                Ajustes
-              </h1>
-              <p className='lead'>
-                Somente o essencial para adaptar o aplicativo ao seu jeito.
-              </p>
-              <div className='settings-grid'>
+              <div className='eyebrow'>Preferências</div>
+              <h1 className='h1'>Ajustes</h1>
+              <p className='lead'>Aparência, alertas, segurança e dados.</p>
+
+              <div className='settings-grid premium-lite-settings'>
                 <div className='setting-card liquid'>
-                  <h3>
-                    <i data-lucide='sun-moon'></i>
-                    Aparência
-                  </h3>
-                  <p>
-                    Escolha como o Ritmo deve aparecer.
-                  </p>
+                  <h3><i data-lucide='sun-moon'></i>Aparência</h3>
                   <div className='theme-choices'>
                     <button className='theme-choice' data-theme-choice='light'>
-                      <div className='theme-preview' style={{background: 'linear-gradient(145deg,#F7FAFD,#EAF1F6)'} as React.CSSProperties}></div>
-                      Claro
+                      <div className='theme-preview theme-preview-light'></div>
+                      <span>Claro</span>
                     </button>
                     <button className='theme-choice' data-theme-choice='dark'>
-                      <div className='theme-preview' style={{background: 'linear-gradient(145deg,#0B1017,#172230)'} as React.CSSProperties}></div>
-                      Black
+                      <div className='theme-preview theme-preview-dark'></div>
+                      <span>Black 75%</span>
                     </button>
                     <button className='theme-choice' data-theme-choice='system'>
-                      <div className='theme-preview' style={{background: 'linear-gradient(90deg,#F4F6F8 0 50%,#0A1F44 50%)'} as React.CSSProperties}></div>
-                      Sistema
+                      <div className='theme-preview theme-preview-system'></div>
+                      <span>Sistema</span>
                     </button>
                   </div>
                 </div>
+
                 <div className='setting-card liquid'>
-                  <h3>
-                    <i data-lucide='bell'></i>
-                    Notificações
-                  </h3>
-                  <p>
-                    Controle alertas realmente úteis.
-                  </p>
+                  <h3><i data-lucide='bell'></i>Notificações</h3>
                   <div className='setting-row'>
-                    <div>
-                      <strong>
-                        Vencimentos
-                      </strong>
-                      <small>
-                        Lembretes de contas
-                      </small>
-                    </div>
-                    <button className='switch on' data-setting='due'></button>
+                    <div><strong>Vencimentos</strong><small>Contas e valores pendentes</small></div>
+                    <button className='switch on' data-setting='due' aria-label='Alertas de vencimentos'></button>
                   </div>
                   <div className='setting-row'>
-                    <div>
-                      <strong>
-                        Metas
-                      </strong>
-                      <small>
-                        Progresso e conquistas
-                      </small>
-                    </div>
-                    <button className='switch on' data-setting='goals'></button>
+                    <div><strong>Metas</strong><small>Prazos de objetivos</small></div>
+                    <button className='switch on' data-setting='goals' aria-label='Alertas de metas'></button>
+                  </div>
+                  <div className='setting-row'>
+                    <div><strong>Notificações do sistema</strong><small>Receber alertas fora do app</small></div>
+                    <button className='premium-btn btn-glass compact-action' id='enablePush'>Ativar</button>
                   </div>
                 </div>
+
                 <div className='setting-card liquid'>
-                  <h3>
-                    <i data-lucide='shield-check'></i>
-                    Segurança
-                  </h3>
-                  <p>
-                    Proteja o acesso ao aplicativo.
-                  </p>
-                  <div className='setting-row'>
-                    <div>
-                      <strong>
-                        Alterar senha
-                      </strong>
-                      <small>
-                        Atualize suas credenciais
-                      </small>
+                  <h3><i data-lucide='shield-check'></i>Segurança</h3>
+                  {biometricAvailable&&!desktopViewport&&(
+                    <div className='setting-row'>
+                      <div><strong>Biometria</strong><small>Entrar sem digitar o usuário</small></div>
+                      <button className='premium-btn btn-glass compact-action' id='enableBiometrics'>Ativar</button>
                     </div>
-                    <button className='premium-btn btn-glass icon-btn' data-action='change-password' style={{width: '34px', height: '34px'} as React.CSSProperties}>
+                  )}
+                  <div className='setting-row'>
+                    <div><strong>Alterar senha</strong><small>Atualizar credencial</small></div>
+                    <button aria-label='Alterar senha' className='premium-btn btn-glass icon-btn' data-action='change-password'>
                       <i data-lucide='chevron-right'></i>
                     </button>
                   </div>
                   <div className='setting-row'>
-                    <div>
-                      <strong>
-                        Código de recuperação
-                      </strong>
-                      <small>
-                        Gerar uma nova chave de segurança
-                      </small>
-                    </div>
-                    <button aria-label='Código de recuperação' className='premium-btn btn-glass icon-btn' data-action='recovery-code' style={{width: '34px', height: '34px'} as React.CSSProperties}>
+                    <div><strong>Código de recuperação</strong><small>Gerar nova chave</small></div>
+                    <button aria-label='Código de recuperação' className='premium-btn btn-glass icon-btn' data-action='recovery-code'>
                       <i data-lucide='key-round'></i>
                     </button>
                   </div>
-                  <div className='setting-row'>
-                    <div>
-                      <strong>
-                        Privacidade
-                      </strong>
-                      <small>
-                        Controle seus dados
-                      </small>
-                    </div>
-                    <button className='premium-btn btn-glass icon-btn' data-action='privacy' style={{width: '34px', height: '34px'} as React.CSSProperties}>
-                      <i data-lucide='chevron-right'></i>
-                    </button>
-                  </div>
-                  <div className='setting-row logout-row'>
-                    <div>
-                      <strong>
-                        Encerrar sessão
-                      </strong>
-                      <small>
-                        Sair com segurança
-                      </small>
-                    </div>
-                    <button className='premium-btn btn-glass icon-btn logout-icon-btn' data-action='logout' style={{width: '34px', height: '34px'} as React.CSSProperties}>
-                      <i data-lucide='log-out'></i>
-                    </button>
-                  </div>
                 </div>
+
                 <div className='setting-card liquid'>
-                  <h3>
-                    <i data-lucide='folders'></i>
-                    Categorias
-                  </h3>
-                  <p>
-                    Organize receitas e despesas.
-                  </p>
+                  <h3><i data-lucide='download'></i>Dados</h3>
                   <div className='setting-row'>
-                    <div>
-                      <strong>
-                        Editar categorias
-                      </strong>
-                      <small>
-                        Personalizar grupos
-                      </small>
-                    </div>
-                    <button className='premium-btn btn-glass icon-btn' data-action='categories' style={{width: '34px', height: '34px'} as React.CSSProperties}>
-                      <i data-lucide='chevron-right'></i>
+                    <div><strong>Exportar dados</strong><small>Baixar backup em JSON</small></div>
+                    <button aria-label='Exportar dados' className='premium-btn btn-glass icon-btn' data-action='export'>
+                      <i data-lucide='download'></i>
                     </button>
                   </div>
+                  {pwaInstallReady&&(
+                    <div className='setting-row'>
+                      <div><strong>Instalar Ritmo</strong><small>Adicionar à tela inicial</small></div>
+                      <button className='premium-btn btn-glass compact-action' id='installPwa'>Instalar</button>
+                    </div>
+                  )}
+                </div>
+
+                <div className='setting-card liquid logout-card'>
+                  <button className='setting-row logout-row logout-full' data-action='logout'>
+                    <div><strong>Sair</strong><small>Encerrar sessão</small></div>
+                    <i data-lucide='log-out'></i>
+                  </button>
                 </div>
               </div>
             </section>
@@ -2331,9 +2245,7 @@ export default function App() {
           </div>
           
 
-          <div className='reference-login-tag'>
-            MAIS QUE FINANÇAS • UM FUTURO REAL
-          </div>
+
           
 
         </div>
@@ -2367,7 +2279,7 @@ export default function App() {
 
             <div className='field liquid-soft reference-field'>
               <i data-lucide='user-round'></i>
-              <input autoComplete='username' id='loginUser' placeholder='Seu usuário' />
+              <input autoComplete='username' id='loginUser' placeholder='Seu usuário' value={form.loginUser||''} onChange={e=>setField('loginUser',e.target.value)} />
             </div>
             
 
@@ -2384,6 +2296,29 @@ export default function App() {
               </button>
             </div>
             
+
+            <label className='remember-login-row'>
+              <input
+                type='checkbox'
+                checked={rememberLogin}
+                onChange={e=>{
+                  const checked=e.target.checked;
+                  setRememberLogin(checked);
+                  if(!checked){
+                    saveRememberedUsername();
+                    setRememberedLoginUser('');
+                  }else{
+                    const username=(form.loginUser||'').trim().toLowerCase();
+                    if(username){
+                      saveRememberedUsername(username);
+                      setRememberedLoginUser(username);
+                    }
+                  }
+                }}
+              />
+              <span className='remember-check' aria-hidden='true'><i data-lucide='circle-check-big'></i></span>
+              <span>Lembrar usuário neste aparelho</span>
+            </label>
 
             <button className='premium-btn btn-emerald login-btn reference-login-button' id='loginBtn'>
               Entrar 
@@ -2486,7 +2421,7 @@ export default function App() {
             <div className='generated-user-box'>
               <span>Seu usuário</span>
               <strong>@{generatedUsername || 'usuario'}</strong>
-              <small>Use este usuário para entrar no APK, PWA/TWA ou desktop. Ele é permanente e não pode ser alterado.</small>
+              <small>Use este usuário para entrar no Ritmo. Ele é permanente e não pode ser alterado.</small>
             </div>
             <div className='recovery-code-box'>
               <span>
@@ -2661,63 +2596,7 @@ export default function App() {
         {renderModal()}
       </div>
     </div>
-    <div id='sheetBackdrop' className={`sheet-backdrop ${sheetOpen ? "show" : ""}`.trim()} onClick={handleClick} onInput={handleInput} onChange={handleInput}>
-      <div className='modal liquid' id='sheetBox' role='dialog' aria-modal='true' style={{width: 'min(520px,100%)'} as React.CSSProperties}>
-        <div className='modal-top'>
-          <h3>
-            Menu
-          </h3>
-          <button className='premium-btn btn-glass icon-btn' data-action='close-sheet' style={{width: '36px', height: '36px'} as React.CSSProperties}>
-            <i data-lucide='x'></i>
-          </button>
-        </div>
-        <div className='list'>
-          <button className='row' data-go='calendar'>
-            <div className='row-icon' style={{background: 'rgba(24,183,163,.12)', color: 'var(--emerald)'} as React.CSSProperties}>
-              <i data-lucide='calendar-days'></i>
-            </div>
-            <div className='row-main'>
-              <strong>
-                Planejamento
-              </strong>
-              <small>
-                Calendário financeiro
-              </small>
-            </div>
-          </button>
-          <button className='row' data-go='reports'>
-            <div className='row-icon' style={{background: 'rgba(16,42,92,.10)', color: 'var(--night)'} as React.CSSProperties}>
-              <i data-lucide='chart-no-axes-combined'></i>
-            </div>
-            <div className='row-main'>
-              <strong>
-                Relatórios
-              </strong>
-              <small>
-                Análises financeiras
-              </small>
-            </div>
-          </button>
-          <button className='row' data-go='profile'>
-            <div className='row-icon' style={{background: 'rgba(217,179,91,.14)', color: '#B57C25'} as React.CSSProperties}>
-              <i data-lucide='user-round'></i>
-            </div>
-            <div className='row-main'>
-              <strong>
-                Perfil
-              </strong>
-              <small>
-                Conta e preferências
-              </small>
-            </div>
-          </button>
-          <button className='row mobile-logout-row' data-action='logout'>
-            <div className='row-icon logout-icon-soft'><i data-lucide='log-out'></i></div>
-            <div className='row-main'><strong>Sair</strong><small>Encerrar sessão com segurança</small></div>
-          </button>
-        </div>
-      </div>
-    </div>
+
     <div id='toast' className={`toast ${toastState.open ? "show" : ""}`.trim()}>
       {toastState.message}
     </div>
