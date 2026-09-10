@@ -3398,3 +3398,169 @@ html[data-theme="dark"] .mini-action.danger{background:rgba(224,91,104,.13);colo
     width:100%!important;
   }
 }
+
+
+/* RITMO • BLACK THEME + CARD CENTERING HOTFIX 2026-09-10 */
+html[data-theme="dark"]{
+  --bg:#070A0F;
+  --surface:rgba(18,23,31,.82);
+  --surface-strong:rgba(23,29,39,.94);
+  --surface-soft:rgba(28,35,46,.74);
+  --stroke:rgba(255,255,255,.12);
+  --stroke-soft:rgba(255,255,255,.075);
+  --text:#F7FAFF;
+  --muted:#BCC7D6;
+  --muted2:#94A2B5;
+  --success:#4BD7C0;
+  --danger:#FF8792;
+  --warning:#E9C66F;
+}
+
+html[data-theme="dark"] :where(
+  .h1,.balance,.kpi-value,.section-head h2,.goal-name,.goal-numbers strong,
+  .row-main strong,.row-value,.profile-data h2,.profile-summary-list strong,
+  .setting-card h3,.setting-row strong,.cal-title,.page-title-mini,
+  .home-score-copy strong,.reference-donut strong,.generated-user-box strong,
+  .immutable-username-box>strong
+){
+  color:#F7FAFF!important;
+}
+
+html[data-theme="dark"] :where(
+  .lead,.balance-label,.hero-sub,.kpi-label,.kpi-hint,.quick small,
+  .row-main small,.goal-sub,.goal-foot,.setting-card>p,.setting-row small,
+  .profile-data p,.profile-summary-list span,.home-score-copy span,
+  .home-score-copy small,.reference-donut small,.generated-login-hint,
+  .generated-user-box span,.generated-user-box small,.immutable-username-box>span,
+  .immutable-username-box>small,.page-title-mini + small
+){
+  color:#B8C5D5!important;
+}
+
+html[data-theme="dark"] :where(.btn-glass,.icon-btn,.sync-btn,.mobile-header button,.topbar button){
+  color:#E9F0FA!important;
+}
+html[data-theme="dark"] :where(.btn-glass,.icon-btn,.sync-btn,.mobile-header button,.topbar button) svg,
+html[data-theme="dark"] :where(.nav-item,.bottom-nav button,.home-quick,.setting-card h3,.row-icon,.kpi-icon,.goal-symbol) svg{
+  color:currentColor!important;
+  stroke:currentColor!important;
+}
+
+html[data-theme="dark"] .nav-item{color:#B6C3D4!important}
+html[data-theme="dark"] .nav-item.active{color:#8CEBDE!important}
+html[data-theme="dark"] .bottom-nav button{color:#AEBBCD!important}
+html[data-theme="dark"] .bottom-nav button.active{color:#8CEBDE!important}
+
+html[data-theme="dark"] .finaci-blue-soft,
+html[data-theme="dark"] [style*="color:var(--night)"]{
+  color:#8FBFFF!important;
+  background:rgba(95,153,255,.17)!important;
+}
+html[data-theme="dark"] .finaci-green-soft,
+html[data-theme="dark"] [style*="color:var(--emerald)"]{
+  color:#72E4D1!important;
+  background:rgba(46,201,179,.16)!important;
+}
+html[data-theme="dark"] .finaci-red-soft,
+html[data-theme="dark"] [style*="color:var(--danger)"]{
+  color:#FF929C!important;
+  background:rgba(255,111,126,.15)!important;
+}
+html[data-theme="dark"] .finaci-gold-soft,
+html[data-theme="dark"] [style*="color:#B57C25"]{
+  color:#F2D17D!important;
+  background:rgba(233,190,88,.16)!important;
+}
+html[data-theme="dark"] .row-icon{
+  border:1px solid rgba(255,255,255,.06)!important;
+}
+html[data-theme="dark"] .row-icon.green{
+  color:#72E4D1!important;
+  background:rgba(46,201,179,.16)!important;
+}
+html[data-theme="dark"] .row-icon.red{
+  color:#FF929C!important;
+  background:rgba(255,111,126,.15)!important;
+}
+html[data-theme="dark"] .profile-quote strong{color:#D8E3F0!important}
+html[data-theme="dark"] .profile-quote .quote-mark{color:#8FA1B7!important}
+html[data-theme="dark"] .success-chip{color:#72E4D1!important;background:rgba(46,201,179,.14)!important}
+html[data-theme="dark"] .tag.ok{color:#72E4D1!important}
+html[data-theme="dark"] .tag.warn{color:#F2D17D!important}
+html[data-theme="dark"] .tag.bad{color:#FF929C!important}
+
+:where(
+  .kpi-grid,.home-kpis,.home-reference-grid,.home-lower-grid,.grid-main,
+  .calendar-layout,.goal-grid,.settings-grid,.profile-layout,.profile-reference-grid,
+  .quick-grid,.home-quick-strip,.profile-actions
+){
+  width:100%!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+}
+
+@media(max-width:1023px){
+  .content{
+    width:100%!important;
+    max-width:760px!important;
+    margin-inline:auto!important;
+  }
+  .page{
+    width:100%!important;
+    margin-inline:auto!important;
+  }
+  .home-kpis,
+  #page-transactions .kpi-grid,
+  #page-debts .kpi-grid{
+    width:100%!important;
+    max-width:680px!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    justify-content:center!important;
+    align-content:start!important;
+  }
+  .home-kpis .kpi,
+  #page-transactions .kpi-grid .kpi,
+  #page-debts .kpi-grid .kpi{
+    width:100%!important;
+    margin:0 auto!important;
+    display:grid!important;
+    grid-template-columns:36px minmax(0,1fr)!important;
+    align-items:center!important;
+    justify-content:stretch!important;
+    align-self:stretch!important;
+  }
+  .home-kpis .kpi-icon,
+  #page-transactions .kpi-grid .kpi-icon,
+  #page-debts .kpi-grid .kpi-icon{
+    align-self:center!important;
+    justify-self:center!important;
+  }
+  .home-reference-grid,
+  .home-lower-grid,
+  .goal-grid,
+  .settings-grid,
+  .profile-reference-grid,
+  .calendar-layout,
+  .grid-main{
+    width:100%!important;
+    max-width:680px!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+}
+
+@media(max-width:430px){
+  .home-kpis,
+  #page-transactions .kpi-grid,
+  #page-debts .kpi-grid{
+    max-width:100%!important;
+  }
+  .home-kpis .kpi,
+  #page-transactions .kpi-grid .kpi,
+  #page-debts .kpi-grid .kpi{
+    grid-template-columns:34px minmax(0,1fr)!important;
+    column-gap:9px!important;
+  }
+}
