@@ -3564,3 +3564,58 @@ html[data-theme="dark"] .tag.bad{color:#FF929C!important}
     column-gap:9px!important;
   }
 }
+
+
+/* RITMO • FAB BLACK CONTRAST FINAL 2026-09-10 */
+@media(max-width:1023px){
+  #fabMenu{
+    right:auto!important;
+    transform-origin:center bottom!important;
+  }
+  #fabMenu.show{
+    transform:none!important;
+  }
+
+  html[data-theme="dark"] #fabMenu{
+    background:#101A29!important;
+    border:1px solid rgba(255,255,255,.10)!important;
+    box-shadow:0 30px 80px rgba(0,0,0,.58),inset 0 1px 0 rgba(255,255,255,.07)!important;
+  }
+
+  html[data-theme="dark"] #fabMenu .fab-action{
+    color:#F7FAFF!important;
+  }
+  html[data-theme="dark"] #fabMenu .fab-action small{
+    color:#B8C5D5!important;
+  }
+
+  html[data-theme="dark"] #fabMenu .fab-action-icon{
+    background:#14283A!important;
+    border:1px solid rgba(255,255,255,.08)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04)!important;
+  }
+  html[data-theme="dark"] #fabMenu .fab-action-icon svg{
+    width:20px!important;
+    height:20px!important;
+    stroke:currentColor!important;
+    color:currentColor!important;
+    stroke-width:2.15!important;
+  }
+
+  html[data-theme="dark"] #fabMenu .fab-action:nth-child(1) .fab-action-icon{
+    color:#6DE3D0!important;
+    background:rgba(39,191,169,.16)!important;
+  }
+  html[data-theme="dark"] #fabMenu .fab-action:nth-child(2) .fab-action-icon{
+    color:#F1D078!important;
+    background:rgba(217,179,91,.16)!important;
+  }
+  html[data-theme="dark"] #fabMenu .fab-action:nth-child(3) .fab-action-icon{
+    color:#8FBFFF!important;
+    background:rgba(95,153,255,.16)!important;
+  }
+  html[data-theme="dark"] #fabMenu .fab-action:nth-child(4) .fab-action-icon{
+    color:#FF929C!important;
+    background:rgba(255,111,126,.15)!important;
+  }
+}
