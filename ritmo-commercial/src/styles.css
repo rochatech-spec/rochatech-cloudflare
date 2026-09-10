@@ -2804,3 +2804,214 @@ body.auth-active #loginPage{
     }
   }
 }
+
+
+/* =========================================================
+   RITMO • MOBILE PREMIUM OVERLAY REFINEMENT
+   Visual sólido, foco real no primeiro plano e comportamento
+   previsível em PWA/TWA/Capacitor.
+   ========================================================= */
+@media(max-width:1023px){
+  body.mobile-overlay-open #appBackground{
+    filter:blur(10px) saturate(.82) brightness(.94)!important;
+    transform:scale(1.012)!important;
+    transform-origin:center center!important;
+    pointer-events:none!important;
+    transition:filter .22s ease,transform .22s ease!important;
+  }
+
+  .modal-backdrop,
+  .sheet-backdrop{
+    z-index:190!important;
+    background:rgba(7,18,34,.30)!important;
+    backdrop-filter:blur(5px)!important;
+    -webkit-backdrop-filter:blur(5px)!important;
+    align-items:center!important;
+    justify-content:center!important;
+  }
+
+  #modalBox,
+  #sheetBox{
+    width:min(460px,calc(100vw - 24px))!important;
+    max-height:calc(100dvh - max(32px,env(safe-area-inset-top)) - max(32px,env(safe-area-inset-bottom)))!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain!important;
+    scrollbar-width:none!important;
+    border-radius:30px!important;
+    padding:20px!important;
+    background:#F8FAFD!important;
+    border:1px solid rgba(10,31,68,.08)!important;
+    box-shadow:
+      0 30px 80px rgba(4,13,26,.30),
+      0 10px 28px rgba(10,31,68,.12),
+      inset 0 1px 0 rgba(255,255,255,.96)!important;
+    animation:ritmoPremiumModalIn .22s cubic-bezier(.2,.78,.2,1)!important;
+  }
+
+  #modalBox::-webkit-scrollbar,
+  #sheetBox::-webkit-scrollbar{display:none!important}
+
+  #modalBox .modal-top,
+  #sheetBox .modal-top{
+    position:sticky!important;
+    top:-20px!important;
+    z-index:3!important;
+    margin:-20px -20px 14px!important;
+    padding:20px 20px 14px!important;
+    background:#F8FAFD!important;
+    border-bottom:1px solid rgba(10,31,68,.055)!important;
+  }
+
+  #modalBox .modal-top h3,
+  #sheetBox .modal-top h3{
+    font-size:23px!important;
+    line-height:1.08!important;
+    letter-spacing:-.035em!important;
+    font-weight:850!important;
+    color:#0A1F44!important;
+  }
+
+  #modalBox .icon-btn,
+  #sheetBox .icon-btn{
+    width:46px!important;
+    height:46px!important;
+    min-width:46px!important;
+    border-radius:16px!important;
+    background:#EEF3F8!important;
+    color:#0A1F44!important;
+    border:1px solid rgba(10,31,68,.07)!important;
+    box-shadow:0 7px 18px rgba(10,31,68,.08)!important;
+  }
+
+  #modalBox .row,
+  #sheetBox .row{
+    min-height:68px!important;
+    padding:13px 14px!important;
+    border-radius:19px!important;
+    background:#F0F4F8!important;
+    border:1px solid rgba(10,31,68,.06)!important;
+    box-shadow:0 4px 12px rgba(10,31,68,.035)!important;
+  }
+
+  #modalBox .row + .row,
+  #sheetBox .row + .row{margin-top:3px!important}
+
+  #modalBox .row-main strong,
+  #sheetBox .row-main strong{
+    font-size:15px!important;
+    line-height:1.2!important;
+    color:#0A1F44!important;
+    font-weight:800!important;
+  }
+
+  #modalBox .row-main small,
+  #sheetBox .row-main small{
+    margin-top:4px!important;
+    font-size:11px!important;
+    line-height:1.35!important;
+    color:#6B7B93!important;
+  }
+
+  #modalBox .app-input,
+  #modalBox .field,
+  #sheetBox .app-input,
+  #sheetBox .field{
+    min-height:54px!important;
+    border-radius:18px!important;
+    background:#EFF3F8!important;
+    color:#0A1F44!important;
+    border:1px solid rgba(10,31,68,.08)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.90)!important;
+  }
+
+  #modalBox .app-input:focus,
+  #modalBox .field:focus-within,
+  #sheetBox .app-input:focus,
+  #sheetBox .field:focus-within{
+    border-color:rgba(24,183,163,.46)!important;
+    box-shadow:0 0 0 4px rgba(24,183,163,.10),inset 0 1px 0 rgba(255,255,255,.95)!important;
+  }
+
+  #modalBox .premium-btn:not(.icon-btn),
+  #sheetBox .premium-btn:not(.icon-btn){
+    min-height:52px!important;
+    border-radius:18px!important;
+    font-size:14px!important;
+    font-weight:800!important;
+    box-shadow:0 12px 26px rgba(10,31,68,.11)!important;
+  }
+
+  #fabMenu{
+    width:min(300px,calc(100vw - 28px))!important;
+    padding:10px!important;
+    border-radius:26px!important;
+    background:#F8FAFD!important;
+    border:1px solid rgba(10,31,68,.07)!important;
+    box-shadow:0 28px 72px rgba(4,13,26,.28),inset 0 1px 0 rgba(255,255,255,.95)!important;
+    animation:ritmoPremiumFabIn .18s ease-out!important;
+  }
+
+  #fabMenu .fab-action{
+    min-height:58px!important;
+    border-radius:18px!important;
+    padding:10px 12px!important;
+    color:#0A1F44!important;
+  }
+
+  #fabMenu .fab-action:hover,
+  #fabMenu .fab-action:active{
+    background:#EEF3F8!important;
+  }
+
+  #fabMenu .fab-action-icon{
+    width:40px!important;
+    height:40px!important;
+    border-radius:14px!important;
+    background:#E1F5F1!important;
+    color:#0B8E82!important;
+  }
+
+  html[data-theme="dark"] #modalBox,
+  html[data-theme="dark"] #sheetBox,
+  html[data-theme="dark"] #fabMenu{
+    background:#111C2E!important;
+    border-color:rgba(255,255,255,.08)!important;
+    box-shadow:0 30px 80px rgba(0,0,0,.52),0 10px 30px rgba(0,0,0,.28)!important;
+  }
+
+  html[data-theme="dark"] #modalBox .modal-top,
+  html[data-theme="dark"] #sheetBox .modal-top{
+    background:#111C2E!important;
+    border-bottom-color:rgba(255,255,255,.06)!important;
+  }
+
+  html[data-theme="dark"] #modalBox .modal-top h3,
+  html[data-theme="dark"] #sheetBox .modal-top h3,
+  html[data-theme="dark"] #modalBox .row-main strong,
+  html[data-theme="dark"] #sheetBox .row-main strong,
+  html[data-theme="dark"] #fabMenu .fab-action{
+    color:#F4F8FF!important;
+  }
+
+  html[data-theme="dark"] #modalBox .row,
+  html[data-theme="dark"] #sheetBox .row,
+  html[data-theme="dark"] #modalBox .app-input,
+  html[data-theme="dark"] #modalBox .field,
+  html[data-theme="dark"] #sheetBox .app-input,
+  html[data-theme="dark"] #sheetBox .field,
+  html[data-theme="dark"] #modalBox .icon-btn,
+  html[data-theme="dark"] #sheetBox .icon-btn{
+    background:#18263B!important;
+    border-color:rgba(255,255,255,.07)!important;
+    color:#F4F8FF!important;
+  }
+}
+
+@keyframes ritmoPremiumModalIn{
+  from{opacity:0;transform:translateY(14px) scale(.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+@keyframes ritmoPremiumFabIn{
+  from{opacity:0;transform:translateY(8px) scale(.97)}
+  to{opacity:1;transform:none}
+}
