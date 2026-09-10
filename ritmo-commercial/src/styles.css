@@ -3282,3 +3282,29 @@ html[data-theme="dark"] .mini-action.danger{background:rgba(224,91,104,.13);colo
   .home-shortcut{min-width:0!important}
   .mini-action{min-height:32px;padding-inline:10px}
 }
+
+
+/* Filtros de movimentações • desktop + mobile */
+.tx-toolbar{display:grid;grid-template-columns:auto auto minmax(260px,1fr) auto;gap:10px;align-items:center}
+.tx-date-filters{display:grid;grid-template-columns:repeat(2,minmax(132px,1fr));gap:8px}
+.date-filter-field{min-height:44px;border-radius:15px;padding:7px 10px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px}
+.date-filter-field span{font-size:9px;font-weight:760;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.date-filter-field input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:11px}
+.tx-search-field{min-width:0}
+.tx-search-field input{width:100%}
+.tx-clear-btn{height:44px;padding:0 13px;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.tx-clear-btn svg{width:16px;height:16px}
+
+@media(max-width:1023px){
+  .tx-toolbar{grid-template-columns:1fr!important;gap:9px!important;width:100%}
+  .tx-toolbar .seg{width:100%!important;max-width:none!important;display:grid!important;grid-template-columns:repeat(3,1fr)!important}
+  .tx-date-filters{grid-template-columns:1fr 1fr!important;width:100%}
+  .date-filter-field{min-height:46px!important}
+  .tx-search-field{width:100%!important;min-height:46px!important}
+  .tx-clear-btn{width:100%!important}
+}
+
+@media(max-width:430px){
+  .tx-date-filters{grid-template-columns:1fr!important}
+  .date-filter-field{grid-template-columns:38px 1fr}
+}
