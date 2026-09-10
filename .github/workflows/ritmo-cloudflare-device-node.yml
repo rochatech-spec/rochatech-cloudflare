@@ -190,18 +190,33 @@ jobs:
           done
           test "$READY" = "1"
 
-          SMOKE_USER="smoke.$(date +%s)"
-          REG_STATUS="$(curl -sS -o /tmp/reg.json -w '%{http_code}' \
-            -X POST "$BASE/api/auth/register" \
-            -H 'Content-Type: application/json' \
-            --data "{\"username\":\"$SMOKE_USER\",\"password\":\"SmokePass123!\"}")"
-          cat /tmp/reg.json
-          test "$REG_STATUS" = "201"
-          node -e "const d=require('/tmp/reg.json');if(!d.activationToken||!/^RITMO-/.test(d.recoveryCode||''))process.exit(2)"
+          SMOKE_NAME="Ritmo Teste Sincronizado $(date +%s)"
+          for N in 1 2; do
+            REG_STATUS="$(curl -sS -o "/tmp/reg-$N.json" -w '%{http_code}' \
+              -X POST "$BASE/api/auth/register" \
+              -H 'Content-Type: application/json' \
+              --data "{\"displayName\":\"$SMOKE_NAME\",\"password\":\"SmokePass123!\"}")"
+            cat "/tmp/reg-$N.json"
+            test "$REG_STATUS" = "201"
+          done
+          node <<'NODE'
+          const fs=require('fs');
+          const a=JSON.parse(fs.readFileSync('/tmp/reg-1.json','utf8'));
+          const b=JSON.parse(fs.readFileSync('/tmp/reg-2.json','utf8'));
+          for(const d of [a,b]){
+            if(!d.user?.id||!d.user?.username||!d.activationToken||!/^RITMO-/.test(d.recoveryCode||''))process.exit(2);
+          }
+          if(a.user.username===b.user.username)process.exit(3);
+          if(!/^ritmo\.\d+/.test(a.user.username)||!/^ritmo\.\d+/.test(b.user.username))process.exit(4);
+          fs.writeFileSync('/tmp/smoke-ids',`${a.user.id}\n${b.user.id}\n`);
+          console.log('Usuários únicos:',a.user.username,b.user.username);
+          NODE
 
+          ID1="$(sed -n '1p' /tmp/smoke-ids)"
+          ID2="$(sed -n '2p' /tmp/smoke-ids)"
           npx wrangler d1 execute ritmo-commercial-db --remote \
-            --command "DELETE FROM users WHERE username='$SMOKE_USER';" \
+            --command "DELETE FROM users WHERE id IN ('$ID1','$ID2');" \
             --config wrangler.deploy.jsonc >/dev/null
 
-          echo "PWA, API e geração do código de recuperação validados." >> "$GITHUB_STEP_SUMMARY"
+          echo "PWA, API, nome completo, usuários únicos e código de recuperação validados." >> "$GITHUB_STEP_SUMMARY"
           echo "$BASE" >> "$GITHUB_STEP_SUMMARY"
