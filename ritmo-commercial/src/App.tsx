@@ -6,7 +6,7 @@ import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction } from './t
 
 type Page = 'home'|'transactions'|'debts'|'calendar'|'goals'|'reports'|'profile'|'settings';
 type AuthView = 'login'|'register'|'code'|'recover'|'device';
-type ModalKind = 'new-transaction'|'new-goal'|'new-event'|'new-debt'|'debt-payment'|'goal-add'|'edit-profile'|'change-password'|'recovery-code'|'new-recovery-code'|'privacy'|'categories'|'search'|'notifications'|null;
+type ModalKind = 'new-transaction'|'edit-transaction'|'new-goal'|'edit-goal'|'new-event'|'edit-event'|'new-debt'|'edit-debt'|'debt-payment'|'goal-add'|'edit-profile'|'change-password'|'recovery-code'|'new-recovery-code'|'privacy'|'categories'|'search'|'notifications'|null;
 type ModalState = { kind: ModalKind; id?: string } | null;
 type FormState = Record<string,string>;
 
@@ -146,7 +146,7 @@ export default function App() {
     if(page&&page in titles)setCurrentPage(page as Page);
     if(action==='new-transaction'){
       setModal({kind:'new-transaction'});
-      resetForm({newTxDate:todayISO(),newTxType:'Despesa'});
+      resetForm({newTxDate:todayISO(),newTxType:'Despesa',newTxStatus:'auto'});
     }
     if(page||action)window.history.replaceState({},'',window.location.pathname);
   },[authenticated]);
@@ -173,24 +173,30 @@ export default function App() {
   },[profile.theme]);
 
   const totals=useMemo(()=>{
-    const bal=transactions.reduce((a,t)=>a+Number(t.value||0),0),mk=monthKey(new Date());
-    const current=transactions.filter(t=>String(t.date||'').slice(0,7)===mk),inc=current.filter(t=>t.value>0).reduce((a,t)=>a+t.value,0),exp=Math.abs(current.filter(t=>t.value<0).reduce((a,t)=>a+t.value,0));
-    const rate=inc>0?Math.max(0,Math.min(100,((inc-exp)/inc)*100)):0;return{bal,inc,exp,rate};
+    const posted=transactions.filter(t=>t.status!=='pending'),pending=transactions.filter(t=>t.status==='pending'),mk=monthKey(new Date());
+    const bal=posted.reduce((a,t)=>a+Number(t.value||0),0);
+    const pendingBal=pending.reduce((a,t)=>a+Number(t.value||0),0);
+    const current=posted.filter(t=>String(t.date||'').slice(0,7)===mk);
+    const pendingCurrent=pending.filter(t=>String(t.date||'').slice(0,7)===mk);
+    const inc=current.filter(t=>t.value>0).reduce((a,t)=>a+t.value,0),exp=Math.abs(current.filter(t=>t.value<0).reduce((a,t)=>a+t.value,0));
+    const pendingIn=pendingCurrent.filter(t=>t.value>0).reduce((a,t)=>a+t.value,0),pendingOut=Math.abs(pendingCurrent.filter(t=>t.value<0).reduce((a,t)=>a+t.value,0));
+    const rate=inc>0?Math.max(0,Math.min(100,((inc-exp)/inc)*100)):0;
+    return{bal,inc,exp,rate,pendingBal,pendingIn,pendingOut};
   },[transactions]);
 
   const last12=useCallback(()=>{
     const n=new Date(),arr:Array<{key:string;label:string;inc:number;exp:number}>=[];
     for(let i=11;i>=0;i--){const d=new Date(n.getFullYear(),n.getMonth()-i,1);arr.push({key:monthKey(d),label:new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(d).replace('.',''),inc:0,exp:0});}
-    for(const t of transactions){const x=arr.find(a=>a.key===String(t.date||'').slice(0,7));if(x){if(t.value>0)x.inc+=t.value;else x.exp+=Math.abs(t.value);}}
+    for(const t of transactions.filter(t=>t.status!=='pending')){const x=arr.find(a=>a.key===String(t.date||'').slice(0,7));if(x){if(t.value>0)x.inc+=t.value;else x.exp+=Math.abs(t.value);}}
     return arr;
   },[transactions]);
 
   useEffect(()=>{
     const setText=(id:string,value:string)=>{const e=document.getElementById(id);if(e)e.textContent=value};
     const avgGoal=goals.length?goals.reduce((a,g)=>a+Math.min(100,(Number(g.saved||0)/Math.max(1,Number(g.target||1)))*100),0)/goals.length:0;
-    setText('homeBalance',money(totals.bal));setText('homeBalanceHint',transactions.length?'Saldo calculado pelos lançamentos':'Sem movimentações');
-    setText('homeIncome',money(totals.inc));setText('homeIncomeHint','No mês atual');setText('homeExpense',money(totals.exp));setText('homeExpenseHint','No mês atual');setText('homeGoals',String(goals.length));setText('homeGoalsHint',goals.length?`${Math.round(avgGoal)}% de progresso médio`:'Nenhuma meta cadastrada');
-    setText('txBalance',money(totals.bal));setText('txBalanceHint',transactions.length?'Saldo calculado pelos lançamentos':'Sem movimentações');setText('txIncome',money(totals.inc));setText('txExpense',money(totals.exp));setText('txSavings',`${Math.round(totals.rate)}%`);setText('txSavingsHint',totals.inc?'da receita deste mês':'Sem dados suficientes');
+    setText('homeBalance',money(totals.bal));setText('homeBalanceHint',transactions.length?`Atual • pendente ${money(totals.pendingBal)}`:'Sem movimentações');
+    setText('homeIncome',money(totals.inc));setText('homeIncomeHint',totals.pendingIn?`+ ${money(totals.pendingIn)} a receber`:'Efetivadas no mês');setText('homeExpense',money(totals.exp));setText('homeExpenseHint',totals.pendingOut?`${money(totals.pendingOut)} a pagar`:'Efetivadas no mês');setText('homeGoals',String(goals.length));setText('homeGoalsHint',goals.length?`${Math.round(avgGoal)}% de progresso médio`:'Nenhuma meta cadastrada');
+    setText('txBalance',money(totals.bal));setText('txBalanceHint',transactions.length?'Somente valores efetivados':'Sem movimentações');setText('txIncome',money(totals.inc));setText('txIncomeHint',totals.pendingIn?`${money(totals.pendingIn)} pendente`:'Efetivadas no mês');setText('txExpense',money(totals.exp));setText('txExpenseHint',totals.pendingOut?`${money(totals.pendingOut)} pendente`:'Efetivadas no mês');setText('txSavings',money(totals.pendingBal));setText('txSavingsHint',`A receber ${money(totals.pendingIn)} • a pagar ${money(totals.pendingOut)}`);
     setText('homeSavingsRate',`${Math.round(totals.rate)}%`);setText('homeMonthResult',money(totals.inc-totals.exp));setText('homeSummaryText',transactions.length?(totals.inc>=totals.exp?'Receitas cobrem as despesas no mês atual.':'Despesas acima das receitas no mês atual.'):'Adicione movimentações para gerar seu resumo.');
     document.getElementById('homeDonut')?.style.setProperty('--score',String(Math.round(totals.rate)));setText('homeStatusChip',!transactions.length?'Sem dados':totals.inc>=totals.exp?'Em equilíbrio':'Atenção');
     const name=profile.displayName||'Conta',ini=initials(name);setText('accountAvatar',ini);setText('profileAvatar',ini);setText('accountName',name);setText('profileName',name);setText('profileUser',profile.username?'@'+profile.username:'@usuario');
@@ -291,7 +297,7 @@ export default function App() {
       case 'syncNowBtn':case 'mobileSync':await manualRefresh();return;case 'searchBtn':case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;case 'notifyBtn':setModal({kind:'notifications'});return;case 'mobileMore':setSheetOpen(true);return;
     }
     const action=button.dataset.action;
-    if(action==='close-modal'){setModal(null);return;}if(action==='close-sheet'){setSheetOpen(false);return;}if(action==='new-transaction'){setModal({kind:'new-transaction'});resetForm({newTxDate:todayISO(),newTxType:'Despesa'});return;}if(action==='new-goal'){setModal({kind:'new-goal'});resetForm();return;}if(action==='new-event'){setModal({kind:'new-event'});resetForm({newEventDate:isoFromDate(selectedDate)});return;}if(action==='new-debt'){setModal({kind:'new-debt'});resetForm();return;}if(action==='debt-payment'){setModal({kind:'debt-payment',id:button.dataset.debt});resetForm({debtPayDate:todayISO()});return;}if(action==='goal-add'){setModal({kind:'goal-add',id:button.dataset.goal});resetForm();return;}if(action==='edit-profile'){setModal({kind:'edit-profile'});resetForm({profileDisplayName:profile.displayName});return;}if(action==='change-password'){setModal({kind:'change-password'});resetForm();return;}if(action==='recovery-code'){setModal({kind:'recovery-code'});resetForm();return;}if(action==='privacy'){setModal({kind:'privacy'});return;}if(action==='categories'){setModal({kind:'categories'});return;}if(action==='export'){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ritmo-backup-${todayISO()}.json`;a.click();URL.revokeObjectURL(url);notify('Backup exportado.');return;}if(action==='logout'){try{await api.logout();}catch{}await clearLocalAuth();setAuthenticated(false);setData(emptyData);setAuthView('login');notify('Sessão encerrada.');return;}
+    if(action==='close-modal'){setModal(null);return;}if(action==='close-sheet'){setSheetOpen(false);return;}if(action==='new-transaction'){setModal({kind:'new-transaction'});resetForm({newTxDate:todayISO(),newTxType:'Despesa',newTxStatus:'auto'});return;}if(action==='new-goal'){setModal({kind:'new-goal'});resetForm();return;}if(action==='new-event'){setModal({kind:'new-event'});resetForm({newEventDate:isoFromDate(selectedDate)});return;}if(action==='new-debt'){setModal({kind:'new-debt'});resetForm();return;}if(action==='debt-payment'){setModal({kind:'debt-payment',id:button.dataset.debt});resetForm({debtPayDate:todayISO()});return;}if(action==='goal-add'){setModal({kind:'goal-add',id:button.dataset.goal});resetForm();return;}if(action==='edit-profile'){setModal({kind:'edit-profile'});resetForm({profileDisplayName:profile.displayName});return;}if(action==='change-password'){setModal({kind:'change-password'});resetForm();return;}if(action==='recovery-code'){setModal({kind:'recovery-code'});resetForm();return;}if(action==='privacy'){setModal({kind:'privacy'});return;}if(action==='categories'){setModal({kind:'categories'});return;}if(action==='export'){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ritmo-backup-${todayISO()}.json`;a.click();URL.revokeObjectURL(url);notify('Backup exportado.');return;}if(action==='logout'){try{await api.logout();}catch{}await clearLocalAuth();setAuthenticated(false);setData(emptyData);setAuthView('login');notify('Sessão encerrada.');return;}
     if(button.id==='saveTx'){const desc=(form.newTxDesc||'').trim(),value=Math.abs(parseMoney(form.newTxValue||'')),type=(form.newTxType||'Despesa') as 'Receita'|'Despesa';if(!desc||!value)return notify('Informe descrição e valor.');try{await busy(()=>api.createTransaction({date:form.newTxDate||todayISO(),desc,cat:(form.newTxCat||'Outros').trim()||'Outros',type,value,icon:'circle-dollar-sign'}),'Transação salva.');setModal(null);await refresh();}catch{}return;}
     if(button.id==='saveGoal'){const name=(form.newGoalName||'').trim(),target=Math.abs(parseMoney(form.newGoalTarget||''));if(!name||!target)return notify('Informe nome e valor da meta.');try{await busy(()=>api.createGoal({name,target,saved:0,due:form.newGoalDue||''}),'Meta criada.');setModal(null);await refresh();}catch{}return;}
     if(button.id==='saveEvent'){const title=(form.newEventTitle||'').trim(),date=form.newEventDate||'';if(!title||!date)return notify('Informe nome e data.');try{await busy(()=>api.createEvent({title,date,time:form.newEventTime||'',note:(form.newEventNote||'').trim()}),'Evento adicionado.');setModal(null);await refresh();}catch{}return;}
