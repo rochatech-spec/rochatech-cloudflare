@@ -1,0 +1,184 @@
+name: Ritmo Commercial • Cloudflare Device Node Deploy
+
+on:
+  push:
+    branches: [ritmo-commercial-bootstrap]
+    paths:
+      - ".github/workflows/ritmo-cloudflare-device-node.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  request:
+    name: Gerar código Cloudflare
+    runs-on: ubuntu-latest
+    outputs:
+      device_code: ${{ steps.device.outputs.device_code }}
+      interval: ${{ steps.device.outputs.interval }}
+      expires_in: ${{ steps.device.outputs.expires_in }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Solicitar código de dispositivo
+        id: device
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const clientId = '54d11594-84e4-41aa-b438-e81b8fa78ee7';
+          const scope = 'account:read user:read workers:write workers_kv:write d1:write pages:write offline_access';
+          const body = new URLSearchParams({ client_id: clientId, scope });
+          const res = await fetch('https://dash.cloudflare.com/oauth2/device/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+          });
+          const text = await res.text();
+          if (!res.ok) throw new Error(`Device auth HTTP ${res.status}: ${text.slice(0,300)}`);
+          const d = JSON.parse(text);
+          if (!d.device_code || !d.user_code || !d.verification_uri) throw new Error('Resposta de device auth incompleta');
+          console.log(`::add-mask::${d.device_code}`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `device_code=${d.device_code}\ninterval=${d.interval || 5}\nexpires_in=${d.expires_in || 300}\n`);
+          console.log(`CLOUDFLARE_USER_CODE=${d.user_code}`);
+          console.log(`CLOUDFLARE_VERIFY_URL=${d.verification_uri}`);
+          if (d.verification_uri_complete) console.log(`CLOUDFLARE_DIRECT_URL=${d.verification_uri_complete}`);
+          console.log(`Código válido por até ${d.expires_in || 300} segundos.`);
+          NODE
+
+  deploy:
+    name: Aguardar autorização e publicar
+    needs: request
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEVICE_CODE: ${{ needs.request.outputs.device_code }}
+      POLL_INTERVAL: ${{ needs.request.outputs.interval }}
+      EXPIRES_IN: ${{ needs.request.outputs.expires_in }}
+    defaults:
+      run:
+        working-directory: ritmo-commercial
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Trocar autorização por token OAuth
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const clientId = '54d11594-84e4-41aa-b438-e81b8fa78ee7';
+          const deviceCode = process.env.DEVICE_CODE;
+          let interval = Number(process.env.POLL_INTERVAL || 5);
+          const deadline = Date.now() + Number(process.env.EXPIRES_IN || 300) * 1000;
+          while (Date.now() < deadline) {
+            const body = new URLSearchParams({
+              grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+              device_code: deviceCode,
+              client_id: clientId,
+            });
+            const res = await fetch('https://dash.cloudflare.com/oauth2/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: body.toString(),
+            });
+            const text = await res.text();
+            let d = {};
+            try { d = JSON.parse(text); } catch {}
+            if (d.access_token) {
+              console.log(`::add-mask::${d.access_token}`);
+              fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_API_TOKEN=${d.access_token}\n`);
+              console.log('Cloudflare autorizado com sucesso.');
+              process.exit(0);
+            }
+            if (d.error === 'access_denied' || d.error === 'expired_token') throw new Error(d.error);
+            if (d.error === 'slow_down') interval += 5;
+            await new Promise(r => setTimeout(r, interval * 1000));
+          }
+          throw new Error('Autorização Cloudflare expirou');
+          NODE
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Confirmar conta Cloudflare
+        run: npx wrangler whoami --json > /tmp/whoami.json
+
+      - name: Criar ou reutilizar D1 KV R2
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
+          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID" >> "$GITHUB_ENV"
+          npx wrangler d1 list --json --config wrangler.bootstrap.jsonc > /tmp/d1.json
+          DB_ID="$(node -e "const a=require('/tmp/d1.json');const d=a.find(x=>x.name==='ritmo-commercial-db');if(d)process.stdout.write(d.uuid||d.id||'')")"
+          if [ -z "$DB_ID" ]; then
+            npx wrangler d1 create ritmo-commercial-db --config wrangler.bootstrap.jsonc > /tmp/d1-create.txt 2>&1
+            DB_ID="$(grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/d1-create.txt | head -1)"
+          fi
+          test -n "$DB_ID"
+          npx wrangler kv namespace list --config wrangler.bootstrap.jsonc > /tmp/kv.json
+          KV_ID="$(node -e "const fs=require('fs');let s=fs.readFileSync('/tmp/kv.json','utf8');let a;try{a=JSON.parse(s)}catch{const p=s.indexOf('['),q=s.lastIndexOf(']');a=JSON.parse(s.slice(p,q+1))}const d=a.find(x=>x.title==='ritmo-commercial-session'||x.name==='ritmo-commercial-session');if(d)process.stdout.write(d.id||'')")"
+          if [ -z "$KV_ID" ]; then
+            npx wrangler kv namespace create ritmo-commercial-session --config wrangler.bootstrap.jsonc > /tmp/kv-create.txt 2>&1
+            KV_ID="$(grep -Eo '[0-9a-f]{32}' /tmp/kv-create.txt | head -1)"
+          fi
+          test -n "$KV_ID"
+          if ! npx wrangler r2 bucket create ritmo-commercial-files --config wrangler.bootstrap.jsonc > /tmp/r2-create.txt 2>&1; then
+            grep -Eqi 'already|exist' /tmp/r2-create.txt || { cat /tmp/r2-create.txt; exit 1; }
+          fi
+          node - "$DB_ID" "$KV_ID" <<'NODE'
+          const fs=require('fs');
+          const [db,kv]=process.argv.slice(2);
+          fs.writeFileSync('wrangler.deploy.jsonc',fs.readFileSync('wrangler.jsonc','utf8').replace('__D1_DATABASE_ID__',db).replace('__KV_NAMESPACE_ID__',kv));
+          NODE
+          npx wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.deploy.jsonc
+
+      - name: Garantir Pages e segredos
+        run: |
+          set -euo pipefail
+          if ! npx wrangler pages deployment list --project-name ritmo-commercial --config wrangler.bootstrap.jsonc >/tmp/pages-list.txt 2>&1; then
+            npx wrangler pages project create ritmo-commercial --production-branch main --config wrangler.bootstrap.jsonc
+          fi
+          npx wrangler pages secret list --project-name ritmo-commercial --config wrangler.bootstrap.jsonc > /tmp/secrets.txt
+          if ! grep -q 'RECOVERY_PEPPER' /tmp/secrets.txt; then
+            openssl rand -hex 48 | npx wrangler pages secret put RECOVERY_PEPPER --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
+          fi
+          HAS_PUBLIC=0; HAS_PRIVATE=0
+          grep -q 'VAPID_PUBLIC_KEY' /tmp/secrets.txt && HAS_PUBLIC=1 || true
+          grep -q 'VAPID_PRIVATE_KEY' /tmp/secrets.txt && HAS_PRIVATE=1 || true
+          if [ "$HAS_PUBLIC" != "$HAS_PRIVATE" ]; then exit 3; fi
+          if [ "$HAS_PUBLIC" = 0 ]; then
+            node scripts/generate-vapid.mjs > /tmp/vapid.env
+            set -a; . /tmp/vapid.env; set +a
+            printf '%s' "$VAPID_PUBLIC_KEY" | npx wrangler pages secret put VAPID_PUBLIC_KEY --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
+            printf '%s' "$VAPID_PRIVATE_KEY" | npx wrangler pages secret put VAPID_PRIVATE_KEY --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
+          fi
+
+      - name: Build de produção
+        run: npm run build
+
+      - name: Publicar Pages + Functions
+        run: npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA" --config wrangler.deploy.jsonc
+
+      - name: Validar produção
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          BASE='https://ritmo-commercial.pages.dev'
+          for i in {1..30}; do
+            if curl -fsS "$BASE/api/health" | grep -q '"ok":true'; then
+              curl -fsS "$BASE/manifest.webmanifest" | grep -q 'standalone'
+              echo "$BASE" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 4
+          done
+          exit 1
