@@ -281,7 +281,7 @@ jobs:
             HLT=$(curl -fsS -o /tmp/health.json -w '%{http_code}' "$BASE/api/health?release=$GITHUB_SHA" || true)
             MAN=$(curl -fsS -o /tmp/manifest.webmanifest -w '%{http_code}' "$BASE/manifest.webmanifest?release=$GITHUB_SHA" || true)
             SW=$(curl -fsS -o /tmp/sw.js -w '%{http_code}' "$BASE/sw.js?release=$GITHUB_SHA" || true)
-            if [ "$IDX" = 200 ] && [ "$HLT" = 200 ] && [ "$MAN" = 200 ] && [ "$SW" = 200 ] && grep -q '"ok":true' /tmp/health.json && grep -q 'standalone' /tmp/manifest.webmanifest; then
+            if [ "$IDX" = 200 ] && [ "$HLT" = 200 ] && [ "$MAN" = 200 ] && [ "$SW" = 200 ] && grep -q '"ok":true' /tmp/health.json && grep -q '"filesKv":true' /tmp/health.json && grep -q 'standalone' /tmp/manifest.webmanifest; then
               OK=1
               break
             fi
