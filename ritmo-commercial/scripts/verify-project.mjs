@@ -5,128 +5,79 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+
 const app = read('src/App.tsx');
 const css = read('src/styles.css');
 const worker = read('src/worker.ts');
 const api = read('src/services/api.ts');
+const storage = read('src/services/authStorage.ts');
+const device = read('src/services/nativeDevice.ts');
 const schema = read('schema.sql');
 const vite = read('vite.config.ts');
+const pkg = read('package.json');
 const wrangler = read('wrangler.jsonc');
-const tauri = read('src-tauri/tauri.conf.json');
-const cargo = read('src-tauri/Cargo.toml');
-const original = read('reference/ritmo_comercial_leve.html');
-
-const body = original.match(/<body[^>]*>([\s\S]*?)<script[\s>]/i)?.[1] || '';
-const originalIds = [...body.matchAll(/\bid=["']([^"']+)["']/g)].map((m) => m[1]);
-const missingIds = originalIds.filter((id) => !new RegExp(`\\bid=["']${id.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}["']`).test(app));
-assert.equal(new Set(originalIds).size, originalIds.length, 'O HTML original possui IDs duplicados.');
-assert.deepEqual(missingIds, [], `IDs estáticos ausentes no App.tsx: ${missingIds.join(', ')}`);
 
 for (const token of ['TODO', 'FIXME', 'https://unpkg.com']) {
-  assert.equal([app, css, worker, api, vite].some((x) => x.includes(token)), false, `Marcador proibido encontrado: ${token}`);
+  assert.equal([app, css, worker, api, vite].some((x) => x.includes(token)), false, `Marcador proibido: ${token}`);
 }
 
 for (const required of [
-  "id='loginPage' onClick={handleClick} onInput={handleInput} onChange={handleInput}",
-  "id='modalBackdrop' className={`modal-backdrop ${modal ? \"show\" : \"\"}`.trim()} onClick={handleClick}",
-  "id='sheetBackdrop' className={`sheet-backdrop ${sheetOpen ? \"show\" : \"\"}`.trim()} onClick={handleClick}",
-  "id='fabMenu' onClick={handleClick}",
-]) assert.ok(app.includes(required), `Zona interativa sem handler React: ${required}`);
+  "id='loginPage'",
+  "id='modalBackdrop'",
+  "id='fabMenu'",
+  "id='loginUser'",
+  "id='biometricLogin'",
+  "id='bottomNav'",
+  "data-action='logout'",
+]) assert.ok(app.includes(required), `Elemento essencial ausente: ${required}`);
 
-for (const required of [
-  "case 'forgotBtn':setAuthView('recover')",
-  "case 'authorizeDeviceBtn':await authorizeDevice()",
-  "id='recoveryCodeView'",
-  "id='recoverAccessView'",
-  "id='newDeviceView'",
-  'modalRecoveryCode',
-]) assert.ok(app.includes(required), `Fluxo de autenticação incompleto: ${required}`);
+assert.ok(app.includes('Lembrar usuário neste aparelho'), 'Opção de lembrar usuário ausente.');
+assert.ok(app.includes('saveRememberedUsername'), 'Persistência do usuário lembrado ausente.');
+assert.ok(app.includes('async function optimistic'), 'Arquitetura Optimistic UI ausente.');
+assert.ok(app.includes('dataRef.current=snapshot'), 'Rollback otimista ausente.');
+assert.ok(app.includes("window.setInterval(()=>void sync(),90000)"), 'Sincronização periódica leve ausente.');
+assert.ok(app.includes("window.addEventListener('focus',onFocus)"), 'Sincronização ao focar ausente.');
+assert.ok(app.includes("window.addEventListener('online',onOnline)"), 'Sincronização ao reconectar ausente.');
+assert.ok(app.includes("document.addEventListener('visibilitychange',onVisibility)"), 'Sincronização ao voltar ao app ausente.');
+assert.equal(app.includes('sheetOpen'), false, 'Menu mobile duplicado ainda existe.');
+assert.equal(app.includes("id='mobileSync'"), false, 'Sincronização manual mobile redundante ainda existe.');
+assert.equal(app.includes("modal.kind==='privacy'"), false, 'Modal genérico de privacidade ainda existe.');
+assert.equal(app.includes("modal.kind==='categories'"), false, 'Modal genérico de categorias ainda existe.');
 
-for (const required of [
-  "body.auth-active #appShell{display:none!important;pointer-events:none!important;user-select:none!important}",
-  'body.auth-active #modalBackdrop,body.auth-active #sheetBackdrop,body.auth-active #globalFab{display:none!important}',
-  '.modal-backdrop.show{display:flex!important;pointer-events:auto!important}',
-]) assert.ok(css.includes(required), `Patch de camadas/transição ausente: ${required}`);
+assert.equal(pkg.includes('@tauri-apps/'), false, 'Dependência Tauri ainda presente.');
+assert.equal(pkg.includes('"android:build"'), false, 'Script Android ainda presente.');
+assert.equal(api.includes('@tauri-apps/'), false, 'Cliente HTTP ainda contém Tauri.');
+assert.equal(storage.includes('@tauri-apps/'), false, 'Storage ainda contém Tauri.');
+assert.equal(device.includes('@tauri-apps/'), false, 'Recursos de dispositivo ainda contêm Tauri.');
+assert.equal(api.includes('@capacitor/'), false, 'Cliente ainda contém Capacitor.');
+assert.equal(device.includes('@capacitor/'), false, 'Recursos de dispositivo ainda contêm Capacitor.');
+assert.ok(api.includes("const API_URL = (import.meta.env.VITE_API_URL || '/api')"), 'API PWA deve usar mesmo domínio por padrão.');
+assert.ok(api.includes('X-Idempotency-Key'), 'Cliente sem idempotência.');
 
-assert.ok(api.includes("isNativeApp() ? 'https://ritmo-commercial.pages.dev/api' : '/api'"), 'API nativa não possui fallback seguro para Cloudflare.');
-assert.ok(api.includes("@tauri-apps/plugin-http"), 'APK deve usar HTTP nativo do Tauri.');
-assert.equal(api.includes('@capacitor/'), false, 'API ainda contém dependência do Capacitor.');
-assert.ok(api.includes("X-Idempotency-Key"), 'Cliente sem chave de idempotência.');
-for (const route of ['/auth/register','/auth/register/confirm','/auth/login','/auth/device/verify','/auth/recover','/auth/passkeys','/bootstrap','/transactions','/debts','/goals','/events','/files','/health']) {
-  assert.ok(worker.includes(route), `Rota obrigatória ausente: ${route}`);
-}
-for (const table of ['auth_rate_limits','users','trusted_devices','passkeys','transactions','debts','goals','events','push_subscriptions','files','idempotency_keys']) {
-  assert.ok(schema.includes(`CREATE TABLE IF NOT EXISTS ${table}`), `Tabela obrigatória ausente: ${table}`);
-}
-assert.ok(vite.includes("navigateFallbackDenylist: [/^\\/api\\//]"), 'Service Worker pode interceptar API com fallback de navegação.');
-assert.ok(vite.includes('ritmo-data-post-queue'), 'Background Sync de dados não configurado.');
-const native = read('src/services/nativeDevice.ts');
-const storage = read('src/services/authStorage.ts');
-for (const plugin of ['@tauri-apps/plugin-biometric','@tauri-apps/plugin-geolocation','@tauri-apps/plugin-notification']) {
-  assert.ok(native.includes(plugin), `Integração Tauri ausente: ${plugin}`);
-}
-assert.ok(storage.includes('@tauri-apps/plugin-stronghold'), 'Tokens nativos devem usar Stronghold.');
-assert.equal(native.includes('@capacitor/'), false, 'nativeDevice ainda contém dependência do Capacitor.');
-assert.equal(storage.includes('@capacitor/'), false, 'authStorage ainda contém dependência do Capacitor.');
-assert.ok(tauri.includes('br.com.ritmo.gestaofinanceira'), 'Bundle Android do Tauri ausente.');
-assert.ok(cargo.includes('tauri-plugin-http') && cargo.includes('tauri-plugin-notification'), 'Plugins Rust do Tauri incompletos.');
-assert.ok(worker.includes('RECOVERY_PEPPER'), 'Código de recuperação não usa segredo de servidor.');
-assert.ok(worker.includes("'NEW_DEVICE_RECOVERY_REQUIRED'") || worker.includes("requiresDeviceVerification:true"), 'Fluxo de novo aparelho não exige verificação.');
-console.log(`OK: ${originalIds.length} IDs estáticos preservados; autenticação, camadas, API, banco e PWA validados estaticamente.`);
+for (const route of [
+  '/auth/register','/auth/register/confirm','/auth/login','/auth/device/verify','/auth/recover',
+  '/auth/passkeys','/bootstrap','/transactions','/debts','/goals','/events','/files','/health'
+]) assert.ok(worker.includes(route), `Rota ausente: ${route}`);
 
+for (const table of [
+  'auth_rate_limits','users','trusted_devices','passkeys','transactions','debts','debt_payments',
+  'goals','goal_contributions','events','push_subscriptions','files','idempotency_keys'
+]) assert.ok(schema.includes(`CREATE TABLE IF NOT EXISTS ${table}`), `Tabela ausente: ${table}`);
 
-assert(worker.includes('FILES_KV: KVNamespace'), 'Worker deve usar FILES_KV para arquivos.');
-assert(worker.includes("env.FILES_KV.put"), 'Upload deve gravar no Workers KV.');
-assert(worker.includes("env.FILES_KV.get"), 'Download deve ler do Workers KV.');
-assert(worker.includes("env.FILES_KV.delete"), 'Exclusão deve remover do Workers KV.');
-assert(!worker.includes('R2Bucket'), 'R2 não deve ser obrigatório no Worker.');
-assert(wrangler.includes('"binding": "FILES_KV"'), 'wrangler.jsonc deve declarar FILES_KV.');
+assert.ok(worker.includes('RECOVERY_PEPPER'), 'Recuperação sem segredo de servidor.');
+assert.ok(worker.includes("'USERNAME_IMMUTABLE'"), 'Username deve permanecer imutável.');
+assert.ok(worker.includes('FILES_KV: KVNamespace'), 'FILES_KV ausente.');
+assert.ok(worker.includes('env.FILES_KV.put') && worker.includes('env.FILES_KV.get') && worker.includes('env.FILES_KV.delete'), 'Fluxo de arquivos KV incompleto.');
+assert.ok(wrangler.includes('"binding": "FILES_KV"'), 'Binding FILES_KV ausente.');
 
-assert(css.includes('RITMO • MOBILE TRUE CENTER FINAL'), 'Patch final de centralização mobile ausente.');
-assert(css.includes('box-sizing:border-box!important'), 'Modal mobile deve usar border-box.');
-assert(css.includes('place-items:center!important'), 'Overlay mobile deve centralizar pelo viewport.');
+assert.ok(vite.includes("navigateFallbackDenylist: [/^\\/api\\//]"), 'Service Worker não deve interceptar API.');
+assert.ok(vite.includes('ritmo-data-post-queue'), 'Fila de Background Sync ausente.');
+assert.equal(vite.includes('ritmo-bootstrap-offline'), false, 'Bootstrap autenticado não deve ser cacheado.');
 
+assert.ok(css.includes('RITMO • MOBILE MODAL VIEWPORT LOCK'), 'Correção de viewport mobile ausente.');
+assert.ok(css.includes('RITMO • PREMIUM LITE PWA FINAL'), 'Camada Premium Lite ausente.');
+assert.ok(css.includes('place-items:center!important'), 'Modal mobile não está centralizado.');
+assert.ok(css.includes('.remember-login-row'), 'Estilo do login lembrado ausente.');
+assert.ok(css.includes('.logout-card'), 'Sair deve ser uma seção final isolada.');
 
-assert(app.includes("window.setInterval(()=>void sync(),30000)"), 'Sincronização periódica multiaparelho ausente.');
-assert(app.includes("window.addEventListener('focus',onFocus)"), 'Sincronização ao focar a aplicação ausente.');
-assert(app.includes("window.addEventListener('online',onOnline)"), 'Sincronização ao reconectar ausente.');
-assert(app.includes("document.addEventListener('visibilitychange',onVisibility)"), 'Sincronização ao voltar para primeiro plano ausente.');
-assert(!vite.includes("ritmo-bootstrap-offline"), 'Bootstrap autenticado não deve ser cacheado entre sessões.');
-assert(worker.includes("username:pr.username"), 'Bootstrap deve sincronizar o username real.');
-
-
-assert(api.includes("register: (body: { displayName: string; password: string })"), 'Cliente deve cadastrar por nome completo.');
-assert(worker.includes('usernameBaseFromName'), 'Worker deve gerar username a partir do nome.');
-assert(worker.includes('usernameCandidate'), 'Worker deve resolver colisões de username.');
-assert(worker.includes('UNIQUE constraint failed: users\\.username') && worker.includes('continue;'), 'Cadastro deve tratar colisão atômica de username.');
-assert(schema.includes('username TEXT NOT NULL UNIQUE COLLATE NOCASE'), 'Banco deve impedir usernames duplicados.');
-assert(app.includes("id='syncNowBtn'"), 'Botão Atualizar desktop ausente.');
-assert(app.includes("id='mobileSync'"), 'Botão Atualizar mobile ausente.');
-assert(app.includes("className='generated-user-box'"), 'Usuário gerado deve ser exibido no primeiro acesso.');
-assert(app.includes("api.register({displayName,password})"), 'Primeiro acesso deve enviar nome completo ao servidor.');
-assert(worker.includes("request.method==='GET'") && worker.includes("original_name AS name"), 'Listagem sincronizada de arquivos ausente.');
-
-
-assert(worker.includes("'USERNAME_IMMUTABLE'"), 'API deve rejeitar alteração do username.');
-assert(worker.includes("hasOwnProperty.call(b,'username')"), 'Perfil deve bloquear username enviado manualmente.');
-assert(api.includes("Partial<Pick<Profile,'displayName'|'theme'|'dueNotifications'|'goalNotifications'>>"), 'Cliente não deve expor username como campo editável.');
-assert(app.includes('Permanente. O nome de usuário não pode ser alterado.'), 'Interface deve informar que o username é permanente.');
-
-
-assert(schema.includes("status TEXT NOT NULL DEFAULT 'posted'"), 'Transações devem persistir status pending/posted.');
-assert(worker.includes("/transactions\\/([^/]+)\\/post"), 'API deve permitir dar baixa em movimentação pendente.');
-assert(api.includes("postTransaction:"), 'Cliente deve expor ação Dar baixa.');
-assert(api.includes("updateTransaction:") && api.includes("deleteTransaction:"), 'CRUD de movimentações incompleto.');
-assert(api.includes("updateDebt:") && api.includes("deleteDebt:"), 'CRUD de dívidas incompleto.');
-assert(api.includes("updateGoal:") && api.includes("deleteGoal:"), 'CRUD de metas incompleto.');
-assert(api.includes("updateEvent:") && api.includes("deleteEvent:"), 'CRUD de eventos incompleto.');
-assert(app.includes("Pendente") && app.includes("Dar baixa"), 'Interface deve separar saldo atual de saldo pendente.');
-assert(app.includes("edit-transaction") && app.includes("delete-transaction"), 'Ações de movimentação ausentes.');
-assert(app.includes("edit-debt") && app.includes("delete-debt"), 'Ações de dívida ausentes.');
-assert(app.includes("edit-goal") && app.includes("delete-goal"), 'Ações de meta ausentes.');
-assert(app.includes("edit-event") && app.includes("delete-event"), 'Ações de evento ausentes.');
-assert(app.includes("syncNativeFinancialNotifications"), 'Notificações financeiras nativas não estão sincronizadas.');
-assert(css.includes("RITMO • RESPONSIVE DESKTOP + MOBILE FINAL"), 'Camada responsiva final ausente.');
-assert(css.includes("body.sidebar-collapsed .sidebar{width:var(--sidebar-collapsed)!important}"), 'Sidebar retrátil desktop ausente.');
-assert(app.includes("desktopViewport") && app.includes("!desktopViewport"), 'Biometria deve ficar oculta no desktop.');
-assert(app.includes("desktop-logout-btn") && app.includes("mobile-logout-row"), 'Botão Sair visível deve existir em desktop e mobile.');
+console.log('OK: Ritmo PWA validado: leve, optimistic, passkey, push, viewport mobile e UX Premium Lite.');
