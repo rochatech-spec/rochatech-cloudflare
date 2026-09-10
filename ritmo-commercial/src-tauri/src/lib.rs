@@ -5,8 +5,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_geolocation::init())
         .setup(|app| {
+            #[cfg(mobile)]
+            app.handle()
+                .plugin(tauri_plugin_geolocation::init())?;
             let salt_path = app
                 .path()
                 .app_local_data_dir()
