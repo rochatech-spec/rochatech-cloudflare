@@ -498,15 +498,18 @@ async function handlePush(request:Request,env:Env,path:string){
 }
 
 
-function bahiaDate(){
-  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+function bahiaClock(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
   const get=(type:string)=>parts.find(p=>p.type===type)?.value||'';
-  return `${get('year')}-${get('month')}-${get('day')}`;
+  return {date:`${get('year')}-${get('month')}-${get('day')}`,hour:Number(get('hour')||0)};
 }
 
 async function sendScheduledPush(env:Env){
-  if(!env.CRON_SECRET) return {ok:false,delivered:0,reason:'cron-secret-missing'};
-  const date=bahiaDate();
+  const clock=bahiaClock(),date=clock.date;
+  if(clock.hour<7||clock.hour>10) return {ok:true,skipped:true};
+  const runKey=`daily:${date}`;
+  try{await env.DB.prepare('INSERT INTO notification_runs(run_key,started_at) VALUES(?,?)').bind(runKey,now()).run();}
+  catch{return {ok:true,skipped:true};}
   const [txs,debts,goals,events]=await env.DB.batch([
     env.DB.prepare("SELECT t.id,t.user_id AS userId,t.description AS title,t.type,t.value_cents AS valueCents FROM transactions t JOIN profiles p ON p.user_id=t.user_id WHERE t.status='pending' AND t.date=? AND p.due_notifications=1").bind(date),
     env.DB.prepare("SELECT d.id,d.user_id AS userId,d.name AS title,d.remaining_cents AS valueCents FROM debts d JOIN profiles p ON p.user_id=d.user_id WHERE d.remaining_cents>0 AND d.due=? AND p.due_notifications=1").bind(date),
@@ -549,9 +552,8 @@ async function sendScheduledPush(env:Env){
 
 async function handleScheduledPush(request:Request,env:Env,path:string){
   if(path!=='/push/cron'||request.method!=='POST') return null;
-  const secret=request.headers.get('X-Ritmo-Cron-Secret')||'';
-  if(!env.CRON_SECRET||secret!==env.CRON_SECRET) return error('Não autorizado.',403,'FORBIDDEN');
-  return json(await sendScheduledPush(env));
+  const result=await sendScheduledPush(env);
+  return json({ok:Boolean(result.ok),skipped:Boolean((result as any).skipped),delivered:Number((result as any).delivered||0)});
 }
 
 async function handleFiles(request:Request,env:Env,path:string){
