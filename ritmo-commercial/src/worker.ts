@@ -373,7 +373,7 @@ export default {
   async fetch(request:Request,env:Env):Promise<Response>{
     const headers=cors(request,env); if(request.method==='OPTIONS')return new Response(null,{status:204,headers}); const path=new URL(request.url).pathname.replace(/^\/api(?=\/)/,'');
     try{
-      if(path==='/health' && request.method==='GET') return json({ok:true,service:'ritmo',time:now()},200,{...headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+      if(path==='/health' && request.method==='GET') return json({ok:true,service:'ritmo',storage:{filesKv:Boolean(env.FILES_KV)},time:now()},200,{...headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       let r=await handleAuth(request,env,path); if(!r)r=await handlePasskeys(request,env,path); if(!r)r=await handlePush(request,env,path); if(!r)r=await handleFiles(request,env,path); if(!r)r=await runIdempotent(request,env,path,()=>handleData(request,env,path)); if(!r)r=error('Rota não encontrada.',404,'NOT_FOUND');
       const h=new Headers(r.headers);for(const [k,v] of Object.entries(headers))h.set(k,v);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','no-referrer');return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
     }catch(e:any){
