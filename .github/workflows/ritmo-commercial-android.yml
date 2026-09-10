@@ -54,7 +54,6 @@ jobs:
           set -euo pipefail
           npm run check
           npm run build
-          cargo check --manifest-path src-tauri/Cargo.toml
       - name: Inicializar Android Tauri
         env:
           CI: "true"
@@ -62,6 +61,7 @@ jobs:
           set -euo pipefail
           rm -rf src-tauri/gen/android
           npm run tauri android init -- --ci
+          npm run tauri icon public/pwa-512.png
           test -s src-tauri/gen/android/gradlew
       - name: Compilar APK universal
         env:
