@@ -19,6 +19,7 @@ export interface Env {
   VAPID_PUBLIC_KEY: string;
   VAPID_PRIVATE_KEY: string;
   VAPID_SUBJECT: string;
+  CRON_SECRET?: string;
 }
 
 type UserRow = { id:string; username:string; display_name:string; password_hash:string; password_salt:string; recovery_hash:string; session_version:number; activated_at:string|null };
@@ -302,16 +303,43 @@ async function handlePasskeys(request:Request,env:Env,path:string){
 }
 
 async function bootstrap(env:Env,userId:string){
-  const [profile,tx,debts,goals,events,files]=await env.DB.batch([
+  const [profile,tx,debts,debtPayments,goals,goalContributions,events,files]=await env.DB.batch([
     env.DB.prepare('SELECT u.username,u.display_name,p.theme,p.due_notifications,p.goal_notifications FROM users u JOIN profiles p ON p.user_id=u.id WHERE u.id=?').bind(userId),
     env.DB.prepare('SELECT id,date,description AS desc,category AS cat,type,value_cents,status,posted_at AS postedAt,icon FROM transactions WHERE user_id=? ORDER BY date DESC,created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,name,total_cents,remaining_cents,due,category FROM debts WHERE user_id=? ORDER BY due').bind(userId),
+    env.DB.prepare('SELECT id,debt_id AS debtId,value_cents,paid_at AS date,created_at AS createdAt FROM debt_payments WHERE user_id=? ORDER BY paid_at DESC,created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,name,target_cents,saved_cents,due FROM goals WHERE user_id=? ORDER BY created_at DESC').bind(userId),
+    env.DB.prepare('SELECT id,goal_id AS goalId,value_cents,created_at AS createdAt FROM goal_contributions WHERE user_id=? ORDER BY created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,title,date,time,note FROM events WHERE user_id=? ORDER BY date,time').bind(userId),
     env.DB.prepare('SELECT id,original_name AS name,content_type AS contentType,size,created_at AS createdAt FROM files WHERE user_id=? ORDER BY created_at DESC').bind(userId),
   ]);
   const pr:any=profile.results?.[0]||{};
-  return {profile:{displayName:pr.display_name||'',username:pr.username||'',theme:pr.theme||'system',dueNotifications:Boolean(pr.due_notifications),goalNotifications:Boolean(pr.goal_notifications)},transactions:(tx.results as any[]).map(x=>({...x,status:x.status||'posted',postedAt:x.postedAt||undefined,value:moneyNumber(x.value_cents),value_cents:undefined})),debts:(debts.results as any[]).map(x=>({...x,total:moneyNumber(x.total_cents),remaining:moneyNumber(x.remaining_cents),total_cents:undefined,remaining_cents:undefined})),goals:(goals.results as any[]).map(x=>({...x,target:moneyNumber(x.target_cents),saved:moneyNumber(x.saved_cents),target_cents:undefined,saved_cents:undefined})),events:events.results,files:files.results};
+  return {
+    profile:{displayName:pr.display_name||'',username:pr.username||'',theme:pr.theme||'system',dueNotifications:Boolean(pr.due_notifications),goalNotifications:Boolean(pr.goal_notifications)},
+    transactions:(tx.results as any[]).map(x=>({...x,status:x.status||'posted',postedAt:x.postedAt||undefined,value:moneyNumber(x.value_cents),value_cents:undefined})),
+    debts:(debts.results as any[]).map(x=>({...x,total:moneyNumber(x.total_cents),remaining:moneyNumber(x.remaining_cents),total_cents:undefined,remaining_cents:undefined})),
+    debtPayments:(debtPayments.results as any[]).map(x=>({...x,value:moneyNumber(x.value_cents),value_cents:undefined})),
+    goals:(goals.results as any[]).map(x=>({...x,target:moneyNumber(x.target_cents),saved:moneyNumber(x.saved_cents),target_cents:undefined,saved_cents:undefined})),
+    goalContributions:(goalContributions.results as any[]).map(x=>({...x,value:moneyNumber(x.value_cents),value_cents:undefined})),
+    events:events.results,files:files.results
+  };
+}
+
+async function recalcDebt(env:Env,userId:string,debtId:string,ts=now()){
+  const d=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(debtId,userId).first<any>();
+  if(!d)return null;
+  const sum=await env.DB.prepare('SELECT COALESCE(SUM(value_cents),0) AS paid FROM debt_payments WHERE debt_id=? AND user_id=?').bind(debtId,userId).first<{paid:number}>();
+  const remaining=Math.max(0,d.total_cents-Number(sum?.paid||0));
+  await env.DB.prepare('UPDATE debts SET remaining_cents=?,updated_at=? WHERE id=? AND user_id=?').bind(remaining,ts,debtId,userId).run();
+  return {id:d.id,name:d.name,total:moneyNumber(d.total_cents),remaining:moneyNumber(remaining),due:d.due,category:d.category};
+}
+async function recalcGoal(env:Env,userId:string,goalId:string,ts=now()){
+  const g=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(goalId,userId).first<any>();
+  if(!g)return null;
+  const sum=await env.DB.prepare('SELECT COALESCE(SUM(value_cents),0) AS saved FROM goal_contributions WHERE goal_id=? AND user_id=?').bind(goalId,userId).first<{saved:number}>();
+  const saved=Math.min(g.target_cents,Math.max(0,Number(sum?.saved||0)));
+  await env.DB.prepare('UPDATE goals SET saved_cents=?,updated_at=? WHERE id=? AND user_id=?').bind(saved,ts,goalId,userId).run();
+  return {id:g.id,name:g.name,target:moneyNumber(g.target_cents),saved:moneyNumber(saved),due:g.due||''};
 }
 
 async function handleData(request:Request,env:Env,path:string){
@@ -368,13 +396,37 @@ async function handleData(request:Request,env:Env,path:string){
     if(!current)return error('Dívida não encontrada.',404,'NOT_FOUND');
     const b=await body<any>(request),name=String(b.name??current.name).trim(),due=String(b.due??current.due),category=String(b.category??current.category).trim()||'Compromisso',total=Math.abs(cents(b.total??moneyNumber(current.total_cents)));
     if(!name||!validDate(due)||!total)return error('Nome, valor e vencimento são obrigatórios.');
-    const alreadyPaid=Math.max(0,current.total_cents-current.remaining_cents),remaining=Math.max(0,total-alreadyPaid);
+    const paidRow=await env.DB.prepare('SELECT COALESCE(SUM(value_cents),0) AS paid FROM debt_payments WHERE debt_id=? AND user_id=?').bind(current.id,uid).first<{paid:number}>();
+    const alreadyPaid=Number(paidRow?.paid||0); if(total<alreadyPaid)return error('O total da dívida não pode ser menor que os pagamentos já registrados.',409,'TOTAL_BELOW_PAYMENTS');
+    const remaining=Math.max(0,total-alreadyPaid);
     await env.DB.prepare('UPDATE debts SET name=?,total_cents=?,remaining_cents=?,due=?,category=?,updated_at=? WHERE id=? AND user_id=?').bind(name.slice(0,120),total,remaining,due,category.slice(0,60),ts,current.id,uid).run();
     return json({id:current.id,name,total:moneyNumber(total),remaining:moneyNumber(remaining),due,category});
   }
   if(debtItem&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM debts WHERE id=? AND user_id=?').bind(debtItem[1],uid).run();return new Response(null,{status:204});}
   const pay=path.match(/^\/debts\/([^/]+)\/payments$/); if(pay&&request.method==='POST'){
-    const b=await body<any>(request),value=Math.abs(cents(b.value)),d=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(pay[1],uid).first<any>(); if(!d||!value)return error('Dívida ou valor inválido.',404,'NOT_FOUND'); const rem=Math.max(0,d.remaining_cents-value); await env.DB.batch([env.DB.prepare('UPDATE debts SET remaining_cents=?,updated_at=? WHERE id=? AND user_id=?').bind(rem,ts,d.id,uid),env.DB.prepare('INSERT INTO debt_payments(id,debt_id,user_id,value_cents,paid_at,created_at) VALUES(?,?,?,?,?,?)').bind(uuid(),d.id,uid,Math.min(value,d.remaining_cents),String(validDate(b.date)?b.date:ts.slice(0,10)),ts)]); return json({id:d.id,name:d.name,total:moneyNumber(d.total_cents),remaining:moneyNumber(rem),due:d.due,category:d.category});
+    const b=await body<any>(request),value=Math.abs(cents(b.value)),d=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(pay[1],uid).first<any>(); if(!d||!value)return error('Dívida ou valor inválido.',404,'NOT_FOUND');
+    if(value>d.remaining_cents)return error('O pagamento não pode ser maior que o saldo em aberto.',409,'PAYMENT_EXCEEDS_REMAINING');
+    await env.DB.prepare('INSERT INTO debt_payments(id,debt_id,user_id,value_cents,paid_at,created_at) VALUES(?,?,?,?,?,?)').bind(uuid(),d.id,uid,value,String(validDate(b.date)?b.date:ts.slice(0,10)),ts).run();
+    return json(await recalcDebt(env,uid,d.id,ts));
+  }
+  const paymentItem=path.match(/^\/debts\/([^/]+)\/payments\/([^/]+)$/);
+  if(paymentItem&&request.method==='PATCH'){
+    const p=await env.DB.prepare('SELECT * FROM debt_payments WHERE id=? AND debt_id=? AND user_id=?').bind(paymentItem[2],paymentItem[1],uid).first<any>();
+    const d=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(paymentItem[1],uid).first<any>();
+    if(!p||!d)return error('Pagamento não encontrado.',404,'NOT_FOUND');
+    const b=await body<any>(request),value=Math.abs(cents(b.value??moneyNumber(p.value_cents))),date=String(b.date??p.paid_at);
+    if(!value||!validDate(date))return error('Valor ou data do pagamento inválido.');
+    const others=await env.DB.prepare('SELECT COALESCE(SUM(value_cents),0) AS paid FROM debt_payments WHERE debt_id=? AND user_id=? AND id<>?').bind(d.id,uid,p.id).first<{paid:number}>();
+    if(Number(others?.paid||0)+value>d.total_cents)return error('A soma dos pagamentos não pode ultrapassar o total da dívida.',409,'PAYMENTS_EXCEED_TOTAL');
+    await env.DB.prepare('UPDATE debt_payments SET value_cents=?,paid_at=? WHERE id=? AND debt_id=? AND user_id=?').bind(value,date,p.id,d.id,uid).run();
+    const debt=await recalcDebt(env,uid,d.id,ts);
+    return json({payment:{id:p.id,debtId:d.id,value:moneyNumber(value),date,createdAt:p.created_at},debt});
+  }
+  if(paymentItem&&request.method==='DELETE'){
+    const p=await env.DB.prepare('SELECT id FROM debt_payments WHERE id=? AND debt_id=? AND user_id=?').bind(paymentItem[2],paymentItem[1],uid).first<any>();
+    if(!p)return error('Pagamento não encontrado.',404,'NOT_FOUND');
+    await env.DB.prepare('DELETE FROM debt_payments WHERE id=? AND debt_id=? AND user_id=?').bind(paymentItem[2],paymentItem[1],uid).run();
+    return json({debt:await recalcDebt(env,uid,paymentItem[1],ts)});
   }
   if(path==='/goals'&&request.method==='POST'){
     const b=await body<any>(request),target=Math.abs(cents(b.target)),id=uuid(); if(!String(b.name||'').trim()||!target||Boolean(b.due)&&!validDate(b.due))return error('Nome, valor e prazo da meta são inválidos.'); await env.DB.prepare('INSERT INTO goals(id,user_id,name,target_cents,saved_cents,due,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,uid,String(b.name).trim().slice(0,120),target,0,b.due||null,ts,ts).run(); return json({id,name:String(b.name).trim(),target:moneyNumber(target),saved:0,due:b.due||''},201);
@@ -385,13 +437,36 @@ async function handleData(request:Request,env:Env,path:string){
     if(!current)return error('Meta não encontrada.',404,'NOT_FOUND');
     const b=await body<any>(request),name=String(b.name??current.name).trim(),due=String(b.due??current.due??''),target=Math.abs(cents(b.target??moneyNumber(current.target_cents)));
     if(!name||!target||(due&&!validDate(due)))return error('Nome, valor e prazo da meta são inválidos.');
-    const saved=Math.min(current.saved_cents,target);
+    const savedRow=await env.DB.prepare('SELECT COALESCE(SUM(value_cents),0) AS saved FROM goal_contributions WHERE goal_id=? AND user_id=?').bind(current.id,uid).first<{saved:number}>();
+    const totalSaved=Number(savedRow?.saved||0); if(target<totalSaved)return error('O valor alvo não pode ser menor que os aportes já registrados.',409,'TARGET_BELOW_CONTRIBUTIONS');
+    const saved=Math.min(totalSaved,target);
     await env.DB.prepare('UPDATE goals SET name=?,target_cents=?,saved_cents=?,due=?,updated_at=? WHERE id=? AND user_id=?').bind(name.slice(0,120),target,saved,due||null,ts,current.id,uid).run();
     return json({id:current.id,name,target:moneyNumber(target),saved:moneyNumber(saved),due});
   }
   if(goalItem&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM goals WHERE id=? AND user_id=?').bind(goalItem[1],uid).run();return new Response(null,{status:204});}
   const contrib=path.match(/^\/goals\/([^/]+)\/contributions$/); if(contrib&&request.method==='POST'){
-    const b=await body<any>(request),value=Math.abs(cents(b.value)),g=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(contrib[1],uid).first<any>(); if(!g||!value)return error('Meta ou valor inválido.',404,'NOT_FOUND'); const saved=Math.min(g.target_cents,g.saved_cents+value); await env.DB.batch([env.DB.prepare('UPDATE goals SET saved_cents=?,updated_at=? WHERE id=? AND user_id=?').bind(saved,ts,g.id,uid),env.DB.prepare('INSERT INTO goal_contributions(id,goal_id,user_id,value_cents,created_at) VALUES(?,?,?,?,?)').bind(uuid(),g.id,uid,Math.min(value,g.target_cents-g.saved_cents),ts)]); return json({id:g.id,name:g.name,target:moneyNumber(g.target_cents),saved:moneyNumber(saved),due:g.due||''});
+    const b=await body<any>(request),value=Math.abs(cents(b.value)),g=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(contrib[1],uid).first<any>(); if(!g||!value)return error('Meta ou valor inválido.',404,'NOT_FOUND');
+    if(value>Math.max(0,g.target_cents-g.saved_cents))return error('O aporte não pode ultrapassar o valor restante da meta.',409,'CONTRIBUTION_EXCEEDS_TARGET');
+    await env.DB.prepare('INSERT INTO goal_contributions(id,goal_id,user_id,value_cents,created_at) VALUES(?,?,?,?,?)').bind(uuid(),g.id,uid,value,ts).run();
+    return json(await recalcGoal(env,uid,g.id,ts));
+  }
+  const contributionItem=path.match(/^\/goals\/([^/]+)\/contributions\/([^/]+)$/);
+  if(contributionItem&&request.method==='PATCH'){
+    const x=await env.DB.prepare('SELECT * FROM goal_contributions WHERE id=? AND goal_id=? AND user_id=?').bind(contributionItem[2],contributionItem[1],uid).first<any>();
+    const g=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(contributionItem[1],uid).first<any>();
+    if(!x||!g)return error('Aporte não encontrado.',404,'NOT_FOUND');
+    const b=await body<any>(request),value=Math.abs(cents(b.value??moneyNumber(x.value_cents))); if(!value)return error('Valor do aporte inválido.');
+    const others=await env.DB.prepare('SELECT COALESCE(SUM(value_cents),0) AS saved FROM goal_contributions WHERE goal_id=? AND user_id=? AND id<>?').bind(g.id,uid,x.id).first<{saved:number}>();
+    if(Number(others?.saved||0)+value>g.target_cents)return error('A soma dos aportes não pode ultrapassar o valor alvo.',409,'CONTRIBUTIONS_EXCEED_TARGET');
+    await env.DB.prepare('UPDATE goal_contributions SET value_cents=? WHERE id=? AND goal_id=? AND user_id=?').bind(value,x.id,g.id,uid).run();
+    const goal=await recalcGoal(env,uid,g.id,ts);
+    return json({contribution:{id:x.id,goalId:g.id,value:moneyNumber(value),createdAt:x.created_at},goal});
+  }
+  if(contributionItem&&request.method==='DELETE'){
+    const x=await env.DB.prepare('SELECT id FROM goal_contributions WHERE id=? AND goal_id=? AND user_id=?').bind(contributionItem[2],contributionItem[1],uid).first<any>();
+    if(!x)return error('Aporte não encontrado.',404,'NOT_FOUND');
+    await env.DB.prepare('DELETE FROM goal_contributions WHERE id=? AND goal_id=? AND user_id=?').bind(contributionItem[2],contributionItem[1],uid).run();
+    return json({goal:await recalcGoal(env,uid,contributionItem[1],ts)});
   }
   if(path==='/events'&&request.method==='POST'){
     const b=await body<any>(request),id=uuid();if(!String(b.title||'').trim()||!validDate(b.date)||!validTime(b.time))return error('Nome, data ou horário inválido.');await env.DB.prepare('INSERT INTO events(id,user_id,title,date,time,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,uid,String(b.title).trim().slice(0,120),b.date,b.time||null,String(b.note||'').slice(0,400),ts,ts).run();return json({id,title:String(b.title).trim(),date:b.date,time:b.time||'',note:String(b.note||'')},201);
