@@ -383,7 +383,7 @@ export default function App() {
     if(button.id==='copyModalRecovery'){try{await navigator.clipboard.writeText(recoveryCode);notify('Código copiado.');}catch{notify('Selecione e copie manualmente.');}return;}
     if(button.id==='enableBiometrics'){try{await busy(()=>registerBiometrics(),'Biometria ativada neste aparelho.');}catch{}return;}
     if(button.id==='biometricLogin'){const username=(form.loginUser||'').trim();if(!isNativeApp()&&!username)return notify('Informe o usuário antes de usar a biometria.');try{const out=await busy(()=>loginWithBiometrics(username));if(out.mode==='native'){setAuthenticated(true);setAuthView('login');await refresh();}else{await applyAuth(out.auth);}notify('Acesso biométrico confirmado.');}catch{}return;}
-    if(button.id==='enablePush'){try{const push=await busy(()=>enablePushNotifications(),'Notificações ativadas.');if(push?.mode==='web')await api.sendTestPush();}catch{}return;}
+    if(button.id==='enablePush'){try{const push=await busy(()=>enablePushNotifications(),'Notificações ativadas.');if(push?.mode==='web')await api.sendTestPush();else await syncNativeFinancialNotifications(data,profile);}catch{}return;}
     if(button.id==='installPwa'){try{const ok=await installPWA();notify(ok?'Ritmo instalado.':'A instalação não foi concluída.');}catch{notify('Use a opção “Instalar aplicativo” do navegador.');}return;}
   };
 
@@ -403,7 +403,17 @@ export default function App() {
     if(modal.kind==='new-recovery-code')return shell('Novo código de recuperação',<div className="modal-form"><div className="recovery-code-box"><span>Seu novo código</span><code id="modalRecoveryCode">{recoveryCode}</code></div><div className="recovery-note"><i data-lucide="shield-check"></i><span>Anote ou copie agora. O código anterior deixou de funcionar.</span></div><button className="premium-btn btn-primary" id="copyModalRecovery" style={{height:48}}>Copiar código</button></div>);
     if(modal.kind==='privacy')return shell('Privacidade e dispositivo',<div className="list"><div className="row"><div className="row-main"><strong>Sincronização protegida</strong><small>Dados financeiros ficam no D1; arquivos ficam no Workers KV; biometria permanece no autenticador do aparelho.</small></div></div><div className="row"><div className="row-main"><strong>Notificações push</strong><small>Ative alertas nativos para vencimentos e metas.</small></div><button className="premium-btn btn-glass" id="enablePush" style={{height:36,padding:'0 11px'}}>Ativar</button></div><div className="row"><div className="row-main"><strong>Instalar PWA</strong><small>Instale o Ritmo como aplicativo no aparelho.</small></div><button className="premium-btn btn-glass" id="installPwa" style={{height:36,padding:'0 11px'}} disabled={!pwaInstallReady}>Instalar</button></div></div>);
     if(modal.kind==='categories')return shell('Categorias',<div className="list"><div className="row"><div className="row-main"><strong>Categorias livres</strong><small>Informe a categoria ao criar cada movimentação ou dívida.</small></div></div></div>);
-    if(modal.kind==='notifications'){const t=new Date(todayISO()+'T00:00:00'),near=debts.filter(d=>d.remaining>0).map(d=>({...d,days:Math.ceil((new Date(d.due+'T00:00:00').getTime()-t.getTime())/86400000)})).filter(d=>d.days>=0&&d.days<=7).sort((a,b)=>a.days-b.days);return shell('Notificações',near.length?<div className="list">{near.map(d=><button className="row" data-go="debts" key={d.id}><div className="row-icon" style={{background:'rgba(217,179,91,.14)',color:'#B57C25'}}><i data-lucide="calendar-clock"></i></div><div className="row-main"><strong>{d.name}</strong><small>{d.days===0?'Vence hoje':`Vence em ${d.days} dia${d.days===1?'':'s'}`} • {money(d.remaining)}</small></div></button>)}</div>:<div dangerouslySetInnerHTML={{__html:empty('bell-off','Nenhum alerta agora','Seus próximos vencimentos aparecerão aqui.')}}/>);}
+    if(modal.kind==='notifications'){
+      const base=new Date(todayISO()+'T00:00:00');
+      const daysUntil=(date:string)=>Math.ceil((new Date(date+'T00:00:00').getTime()-base.getTime())/86400000);
+      const items=[
+        ...transactions.filter(t=>t.status==='pending').map(t=>({id:'tx-'+t.id,page:'transactions' as Page,title:t.desc,detail:`${t.value>0?'Recebimento':'Pagamento'} ${daysUntil(t.date)===0?'previsto hoje':`em ${daysUntil(t.date)} dia${daysUntil(t.date)===1?'':'s'}`} • ${money(Math.abs(t.value))}`,date:t.date,icon:t.value>0?'arrow-down-left':'arrow-up-right'})),
+        ...debts.filter(d=>d.remaining>0).map(d=>({id:'debt-'+d.id,page:'debts' as Page,title:d.name,detail:`${daysUntil(d.due)===0?'Vence hoje':`Vence em ${daysUntil(d.due)} dia${daysUntil(d.due)===1?'':'s'}`} • ${money(d.remaining)}`,date:d.due,icon:'landmark'})),
+        ...goals.filter(g=>g.due&&g.saved<g.target).map(g=>({id:'goal-'+g.id,page:'goals' as Page,title:g.name,detail:`${daysUntil(g.due||'')===0?'Prazo hoje':`Prazo em ${daysUntil(g.due||'')} dia${daysUntil(g.due||'')===1?'':'s'}`} • faltam ${money(Math.max(0,g.target-g.saved))}`,date:g.due||'',icon:'target'})),
+        ...events.map(ev=>({id:'event-'+ev.id,page:'calendar' as Page,title:ev.title,detail:`${daysUntil(ev.date)===0?'Hoje':`Em ${daysUntil(ev.date)} dia${daysUntil(ev.date)===1?'':'s'}`} • ${ev.time||'Sem horário'}`,date:ev.date,icon:'calendar-clock'}))
+      ].map(i=>({...i,days:daysUntil(i.date)})).filter(i=>i.days>=0&&i.days<=7).sort((a,b)=>a.days-b.days||a.title.localeCompare(b.title));
+      return shell('Notificações',<div className="modal-form"><button className="premium-btn btn-primary" id="enablePush" style={{height:46}}><i data-lucide="bell-ring"></i> Ativar notificações do sistema</button>{items.length?<div className="list">{items.map(i=><button className="row" data-go={i.page} key={i.id}><div className="row-icon"><i data-lucide={i.icon}></i></div><div className="row-main"><strong>{i.title}</strong><small>{i.detail}</small></div></button>)}</div>:<div dangerouslySetInnerHTML={{__html:empty('bell-off','Nenhum alerta nos próximos 7 dias','Quando houver valores, metas ou compromissos próximos, eles aparecerão aqui.')}}/>}</div>);
+    }
     if(modal.kind==='search'){const q=(form.globalSearch||'').toLowerCase(),items=[...Object.entries(titles).map(([p,n])=>({n,p:p as Page})),...transactions.map(x=>({n:x.desc,p:'transactions' as Page})),...debts.map(x=>({n:x.name,p:'debts' as Page})),...goals.map(x=>({n:x.name,p:'goals' as Page}))].filter(i=>!q||i.n.toLowerCase().includes(q)).slice(0,8);return shell('Buscar no Ritmo',<div className="modal-form">{input('globalSearch','Tela, movimentação, dívida ou meta')}<div className="list" id="searchResults">{items.length?items.map((i,k)=><button className="row" data-search-go={i.p} key={`${i.p}-${i.n}-${k}`}><div className="row-main"><strong>{i.n}</strong><small>{titles[i.p]}</small></div><i data-lucide="chevron-right"></i></button>):<div dangerouslySetInnerHTML={{__html:empty('search','Nada encontrado','Tente outro termo.')}}/>}</div></div>);}
     return null;
   }
@@ -931,13 +941,13 @@ export default function App() {
                   </div>
                   <div>
                     <div className='kpi-label'>
-                      Economia
+                      Saldo pendente
                     </div>
                     <div className='kpi-value' id='txSavings'>
-                      0%
+                      R$ 0,00
                     </div>
                     <div className='kpi-hint' id='txSavingsHint'>
-                      Sem dados suficientes
+                      Valores ainda não efetivados
                     </div>
                   </div>
                 </div>
@@ -976,7 +986,13 @@ export default function App() {
                         Tipo
                       </th>
                       <th>
+                        Status
+                      </th>
+                      <th>
                         Valor
+                      </th>
+                      <th>
+                        Ações
                       </th>
                     </tr>
                   </thead>
