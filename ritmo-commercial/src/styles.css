@@ -2651,3 +2651,49 @@ html[data-theme="dark"] .device-verify-badge{color:#F0CC79;background:rgba(217,1
 body.auth-active .reference-login-card{overflow:hidden!important}
 body.auth-active .auth-panel.hidden{display:none!important;pointer-events:none!important;visibility:hidden!important}
 body.auth-active .auth-panel:not(.hidden){display:block!important;pointer-events:auto!important;visibility:visible!important}
+
+
+/* =========================================================
+   RITMO • AUTH CENTERING FIX
+   Centraliza login/primeiro acesso/recuperação em PWA e Capacitor,
+   respeitando barras do navegador e safe areas sem cortar telas altas.
+   ========================================================= */
+body.auth-active #loginPage{
+  display:flex!important;
+  align-items:safe center!important;
+  justify-content:center!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  padding:
+    max(12px,env(safe-area-inset-top))
+    max(12px,env(safe-area-inset-right))
+    max(12px,env(safe-area-inset-bottom))
+    max(12px,env(safe-area-inset-left))!important;
+}
+#loginPage .reference-login-shell{
+  width:min(1120px,100%)!important;
+  min-height:auto!important;
+  height:auto!important;
+  margin:auto!important;
+  padding:0!important;
+  align-items:center!important;
+}
+#loginPage .reference-login-card{margin-block:auto!important}
+@media(max-width:1023px){
+  body.auth-active #loginPage{min-height:100svh!important;height:100dvh!important}
+  #loginPage .reference-login-shell{
+    display:flex!important;
+    min-height:auto!important;
+    height:auto!important;
+    justify-content:center!important;
+    align-items:center!important;
+    padding:0!important;
+  }
+  #loginPage .reference-login-card{
+    width:min(430px,100%)!important;
+    max-height:calc(100dvh - max(24px,env(safe-area-inset-top)) - max(24px,env(safe-area-inset-bottom)))!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain!important;
+    margin:auto!important;
+  }
+}
