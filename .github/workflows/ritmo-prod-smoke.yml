@@ -40,3 +40,16 @@ jobs:
           grep -q '"name"' /tmp/manifest.webmanifest
           curl -fsS https://ritmo-commercial.pages.dev/sw.js -o /tmp/sw.js
           test -s /tmp/sw.js
+
+
+      - name: Validar paridade visual
+        run: |
+          set -euo pipefail
+          BASE='https://ritmo-commercial.pages.dev'
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE/?parity=$GITHUB_SHA" -o /tmp/index.html
+          CSS_PATH="$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/index.html | head -1 | cut -d'"' -f2)"
+          test -n "$CSS_PATH"
+          curl -fsS -H 'Cache-Control: no-cache' "$BASE$CSS_PATH?parity=$GITHUB_SHA" -o /tmp/app.css
+          grep -Eiq -- '--bg:#070a0f|--bg:#070A0F' /tmp/app.css
+          grep -Eq -- 'max-width:680px' /tmp/app.css
+          grep -Eiq -- '#8fbfff|#8FBFFF' /tmp/app.css
