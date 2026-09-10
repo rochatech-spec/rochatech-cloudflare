@@ -73,6 +73,19 @@ export default function App() {
   },[refresh,notify]);
 
   useEffect(()=>{
+    if(!authenticated)return;
+    const params=new URLSearchParams(window.location.search);
+    const page=params.get('page');
+    const action=params.get('action');
+    if(page&&page in titles)setCurrentPage(page as Page);
+    if(action==='new-transaction'){
+      setModal({kind:'new-transaction'});
+      resetForm({newTxDate:todayISO(),newTxType:'Despesa'});
+    }
+    if(page||action)window.history.replaceState({},'',window.location.pathname);
+  },[authenticated]);
+
+  useEffect(()=>{
     document.body.classList.toggle('auth-active',!authenticated);
     const shell=document.getElementById('appShell');
     if(!authenticated){shell?.setAttribute('inert','');shell?.setAttribute('aria-hidden','true');}else{shell?.removeAttribute('inert');shell?.removeAttribute('aria-hidden');}
@@ -161,6 +174,17 @@ export default function App() {
 
   const handleInput=(e:React.FormEvent<HTMLElement>)=>{const t=e.target as HTMLInputElement|HTMLSelectElement;if(!t.id)return;setField(t.id,t.value);if(t.id==='txSearch')setTxSearch(t.value);};
   const navigate=(page:string)=>{if(page in titles){setCurrentPage(page as Page);setModal(null);setSheetOpen(false);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}};
+
+  const handleAuthKeyDown=async(e:React.KeyboardEvent<HTMLElement>)=>{
+    if(e.key!=='Enter'||loading)return;
+    const target=e.target as HTMLElement;
+    if(target.tagName==='TEXTAREA')return;
+    e.preventDefault();
+    if(authView==='login')await login();
+    else if(authView==='register')await register();
+    else if(authView==='recover')await recover();
+    else if(authView==='device')await authorizeDevice();
+  };
 
   const handleClick=async(e:React.MouseEvent<HTMLElement>)=>{
     const el=e.target as HTMLElement;const go=el.closest<HTMLElement>('[data-go]');if(go){navigate(go.dataset.go||'home');return;}const sg=el.closest<HTMLElement>('[data-search-go]');if(sg){navigate(sg.dataset.searchGo||'home');return;}const cal=el.closest<HTMLElement>('[data-cal-date]');if(cal){setSelectedDate(new Date(`${cal.dataset.calDate}T12:00:00`));return;}const button=el.closest<HTMLButtonElement>('button');if(!button)return;
@@ -1502,7 +1526,7 @@ export default function App() {
       
 
     </div>
-    <section aria-label='Acesso ao Ritmo' className='login-page reference-login' id='loginPage' onClick={handleClick} onInput={handleInput} onChange={handleInput}>
+    <section aria-label='Acesso ao Ritmo' className='login-page reference-login' id='loginPage' onClick={handleClick} onInput={handleInput} onChange={handleInput} onKeyDown={handleAuthKeyDown}>
       
 
       <div className='login-blur-shape login-blur-a'></div>
