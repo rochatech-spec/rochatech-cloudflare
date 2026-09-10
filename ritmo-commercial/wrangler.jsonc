@@ -23,11 +23,5 @@
       "binding": "SESSION_KV",
       "id": "__KV_NAMESPACE_ID__"
     }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "FILES",
-      "bucket_name": "ritmo-commercial-files"
-    }
   ]
 }
