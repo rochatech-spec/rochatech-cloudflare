@@ -42,7 +42,6 @@ jobs:
             if (!res.ok) throw new Error(`Device auth HTTP ${res.status}: ${text.slice(0,300)}`);
             const d = JSON.parse(text);
             if (!d.device_code || !d.user_code || !d.verification_uri) throw new Error('Resposta de device auth incompleta');
-            console.log(`::add-mask::${d.device_code}`);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `device_code=${d.device_code}\ninterval=${d.interval || 5}\nexpires_in=${d.expires_in || 300}\n`);
             console.log(`CLOUDFLARE_USER_CODE=${d.user_code}`);
             console.log(`CLOUDFLARE_VERIFY_URL=${d.verification_uri}`);
