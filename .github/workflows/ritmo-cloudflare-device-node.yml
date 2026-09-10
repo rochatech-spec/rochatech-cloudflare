@@ -1,5 +1,5 @@
 name: Ritmo Commercial • Cloudflare Device Node Deploy
-# final-premium-biometric-deploy: 2026-09-10-v2
+# final-kv-sync-auto-user-deploy: 2026-09-10-v1
 
 on:
   push:
