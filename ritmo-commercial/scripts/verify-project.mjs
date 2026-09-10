@@ -24,6 +24,13 @@ for (const token of ['TODO', 'FIXME', 'https://unpkg.com']) {
 }
 
 for (const required of [
+  "id='loginPage' onClick={handleClick} onInput={handleInput} onChange={handleInput}",
+  "id='modalBackdrop' className={`modal-backdrop ${modal ? \"show\" : \"\"}`.trim()} onClick={handleClick}",
+  "id='sheetBackdrop' className={`sheet-backdrop ${sheetOpen ? \"show\" : \"\"}`.trim()} onClick={handleClick}",
+  "id='fabMenu' onClick={handleClick}",
+]) assert.ok(app.includes(required), `Zona interativa sem handler React: ${required}`);
+
+for (const required of [
   "case 'forgotBtn':setAuthView('recover')",
   "case 'authorizeDeviceBtn':await authorizeDevice()",
   "id='recoveryCodeView'",
@@ -38,7 +45,7 @@ for (const required of [
   '.modal-backdrop.show{display:flex!important;pointer-events:auto!important}',
 ]) assert.ok(css.includes(required), `Patch de camadas/transição ausente: ${required}`);
 
-assert.ok(api.includes("import.meta.env.VITE_API_URL || '/api'"), 'API do PWA não está ancorada em /api.');
+assert.ok(api.includes("Capacitor.isNativePlatform() ? 'https://ritmo-commercial.pages.dev/api' : '/api'"), 'API do APK não possui fallback seguro para Cloudflare.');
 assert.ok(api.includes("X-Idempotency-Key"), 'Cliente sem chave de idempotência.');
 for (const route of ['/auth/register','/auth/register/confirm','/auth/login','/auth/device/verify','/auth/recover','/auth/passkeys','/bootstrap','/transactions','/debts','/goals','/events','/files','/health']) {
   assert.ok(worker.includes(route), `Rota obrigatória ausente: ${route}`);
