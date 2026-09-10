@@ -193,7 +193,7 @@ jobs:
           set -euo pipefail
           ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
           echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
-      - name: Criar ou reutilizar recursos Cloudflare
+      - name: Criar ou reutilizar D1 e KV
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: |
@@ -212,9 +212,6 @@ jobs:
             KV_ID="$(grep -Eo '[0-9a-f]{32}' /tmp/kv-create.txt | head -1)"
           fi
           test -n "$KV_ID"
-          if ! npx wrangler r2 bucket create ritmo-commercial-files --config wrangler.bootstrap.jsonc > /tmp/r2-create.txt 2>&1; then
-            grep -Eqi 'already|exist' /tmp/r2-create.txt || { cat /tmp/r2-create.txt; exit 1; }
-          fi
           node - "$DB_ID" "$KV_ID" <<'NODE'
           const fs=require('fs');
           const [db,kv]=process.argv.slice(2);
