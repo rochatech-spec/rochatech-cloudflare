@@ -261,11 +261,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: |
           set -euo pipefail
+          cp wrangler.deploy.jsonc wrangler.jsonc
           npx wrangler pages deploy dist \
             --project-name ritmo-commercial \
             --branch main \
-            --commit-hash "$GITHUB_SHA" \
-            --config wrangler.deploy.jsonc
+            --commit-hash "$GITHUB_SHA"
       - name: Validar produção
         working-directory: ${{ github.workspace }}
         run: |
