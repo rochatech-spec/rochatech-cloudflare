@@ -29,3 +29,14 @@ jobs:
           cat /tmp/register.json
           test "$STATUS" = "400"
           grep -Eq '"code":"(INVALID_DISPLAY_NAME|INVALID_USERNAME)"' /tmp/register.json
+
+
+      - name: PWA
+        run: |
+          set -euo pipefail
+          curl -fsS https://ritmo-commercial.pages.dev/ -o /tmp/index.html
+          grep -q 'manifest.webmanifest' /tmp/index.html
+          curl -fsS https://ritmo-commercial.pages.dev/manifest.webmanifest -o /tmp/manifest.webmanifest
+          grep -q '"name"' /tmp/manifest.webmanifest
+          curl -fsS https://ritmo-commercial.pages.dev/sw.js -o /tmp/sw.js
+          test -s /tmp/sw.js
