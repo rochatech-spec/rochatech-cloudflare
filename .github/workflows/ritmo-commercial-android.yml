@@ -5,6 +5,12 @@ on:
     branches: [ritmo-commercial-bootstrap]
     paths:
       - ".github/workflows/ritmo-commercial-android.yml"
+      - "ritmo-commercial/src/**"
+      - "ritmo-commercial/public/**"
+      - "ritmo-commercial/scripts/**"
+      - "ritmo-commercial/package.json"
+      - "ritmo-commercial/vite.config.ts"
+      - "ritmo-commercial/capacitor.config.ts"
   workflow_dispatch:
 
 permissions:
