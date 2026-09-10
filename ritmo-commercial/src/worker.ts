@@ -10,7 +10,7 @@ import { sendPushNotification } from '@mmmike/web-push/send';
 export interface Env {
   DB: D1Database;
   SESSION_KV: KVNamespace;
-  FILES: R2Bucket;
+  FILES?: R2Bucket;
   APP_ORIGIN: string;
   RP_ID: string;
   RP_NAME: string;
@@ -323,6 +323,7 @@ async function handlePush(request:Request,env:Env,path:string){
 }
 
 async function handleFiles(request:Request,env:Env,path:string){
+  if(path.startsWith('/files')&&!env.FILES)return error('Armazenamento de arquivos temporariamente indisponível.',503,'FILES_STORAGE_UNAVAILABLE');
   const ctx=await requireAuth(request,env);
   if(path==='/files'&&request.method==='POST'){
     const form=await request.formData(),file=form.get('file');if(!(file instanceof File))return error('Arquivo obrigatório.');if(file.size>10*1024*1024)return error('O arquivo deve ter no máximo 10 MB.',413,'FILE_TOO_LARGE');const allowed=new Set(['image/jpeg','image/png','image/webp','application/pdf']);if(!allowed.has(file.type))return error('Formato não permitido.',415,'UNSUPPORTED_FILE');
