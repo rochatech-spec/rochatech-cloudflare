@@ -324,12 +324,13 @@ async function handlePush(request:Request,env:Env,path:string){
 
 async function handleFiles(request:Request,env:Env,path:string){
   if(path.startsWith('/files')&&!env.FILES)return error('Armazenamento de arquivos temporariamente indisponível.',503,'FILES_STORAGE_UNAVAILABLE');
+  const filesStore=env.FILES;
   const ctx=await requireAuth(request,env);
   if(path==='/files'&&request.method==='POST'){
     const form=await request.formData(),file=form.get('file');if(!(file instanceof File))return error('Arquivo obrigatório.');if(file.size>10*1024*1024)return error('O arquivo deve ter no máximo 10 MB.',413,'FILE_TOO_LARGE');const allowed=new Set(['image/jpeg','image/png','image/webp','application/pdf']);if(!allowed.has(file.type))return error('Formato não permitido.',415,'UNSUPPORTED_FILE');
-    const id=uuid(),key=`${ctx.user.id}/${id}`;await env.FILES.put(key,file.stream(),{httpMetadata:{contentType:file.type},customMetadata:{originalName:file.name}});await env.DB.prepare('INSERT INTO files(id,user_id,object_key,original_name,content_type,size,created_at) VALUES(?,?,?,?,?,?,?)').bind(id,ctx.user.id,key,file.name,file.type,file.size,now()).run();return json({id,name:file.name,contentType:file.type,size:file.size},201);
+    const id=uuid(),key=`${ctx.user.id}/${id}`;await filesStore!.put(key,file.stream(),{httpMetadata:{contentType:file.type},customMetadata:{originalName:file.name}});await env.DB.prepare('INSERT INTO files(id,user_id,object_key,original_name,content_type,size,created_at) VALUES(?,?,?,?,?,?,?)').bind(id,ctx.user.id,key,file.name,file.type,file.size,now()).run();return json({id,name:file.name,contentType:file.type,size:file.size},201);
   }
-  const m=path.match(/^\/files\/([^/]+)$/);if(m&&request.method==='GET'){const f=await env.DB.prepare('SELECT * FROM files WHERE id=? AND user_id=?').bind(m[1],ctx.user.id).first<any>();if(!f)return error('Arquivo não encontrado.',404,'NOT_FOUND');const obj=await env.FILES.get(f.object_key);if(!obj)return error('Arquivo não encontrado.',404,'NOT_FOUND');const h=new Headers();obj.writeHttpMetadata(h);h.set('Content-Disposition',`inline; filename*=UTF-8''${encodeURIComponent(f.original_name)}`);return new Response(obj.body,{headers:h});}
+  const m=path.match(/^\/files\/([^/]+)$/);if(m&&request.method==='GET'){const f=await env.DB.prepare('SELECT * FROM files WHERE id=? AND user_id=?').bind(m[1],ctx.user.id).first<any>();if(!f)return error('Arquivo não encontrado.',404,'NOT_FOUND');const obj=await filesStore!.get(f.object_key);if(!obj)return error('Arquivo não encontrado.',404,'NOT_FOUND');const h=new Headers();obj.writeHttpMetadata(h);h.set('Content-Disposition',`inline; filename*=UTF-8''${encodeURIComponent(f.original_name)}`);return new Response(obj.body,{headers:h});}
   return null;
 }
 
