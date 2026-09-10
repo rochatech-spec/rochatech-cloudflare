@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ritmo-commercial-notify",
+  "main": "index.js",
+  "compatibility_date": "2026-09-10",
+  "triggers": {
+    "crons": ["15 * * * *"]
+  },
+  "vars": {
+    "TARGET_URL": "https://ritmo-commercial.pages.dev/api/push/cron"
+  }
+}
