@@ -3308,3 +3308,75 @@ html[data-theme="dark"] .mini-action.danger{background:rgba(224,91,104,.13);colo
   .tx-date-filters{grid-template-columns:1fr!important}
   .date-filter-field{grid-template-columns:38px 1fr}
 }
+
+
+/* Cards mobile • proporções harmonizadas */
+@media(max-width:1023px){
+  .home-kpis,
+  #page-transactions .kpi-grid,
+  #page-debts .kpi-grid{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    grid-auto-rows:1fr!important;
+    align-items:stretch!important;
+    gap:10px!important;
+  }
+  .home-kpis .kpi:first-child{grid-column:auto!important}
+  .home-kpis .kpi,
+  #page-transactions .kpi-grid .kpi,
+  #page-debts .kpi-grid .kpi{
+    width:100%!important;
+    min-width:0!important;
+    min-height:112px!important;
+    height:100%!important;
+    padding:13px!important;
+    align-items:flex-start!important;
+    gap:10px!important;
+  }
+  .home-kpis .kpi>div:last-child,
+  #page-transactions .kpi-grid .kpi>div:last-child,
+  #page-debts .kpi-grid .kpi>div:last-child{
+    min-width:0!important;
+    width:100%!important;
+  }
+  .home-kpis .kpi-value,
+  #page-transactions .kpi-grid .kpi-value,
+  #page-debts .kpi-grid .kpi-value{
+    font-size:clamp(15px,4.2vw,19px)!important;
+    line-height:1.12!important;
+    overflow-wrap:anywhere!important;
+  }
+  .home-kpis .kpi-hint,
+  #page-transactions .kpi-grid .kpi-hint,
+  #page-debts .kpi-grid .kpi-hint{
+    line-height:1.3!important;
+  }
+  .goal-grid .goal,
+  .settings-grid .setting-card,
+  .home-lower-grid .section-card{
+    width:100%!important;
+    min-height:0!important;
+  }
+}
+
+@media(max-width:430px){
+  .home-kpis,
+  #page-transactions .kpi-grid,
+  #page-debts .kpi-grid{
+    gap:8px!important;
+  }
+  .home-kpis .kpi,
+  #page-transactions .kpi-grid .kpi,
+  #page-debts .kpi-grid .kpi{
+    min-height:108px!important;
+    padding:11px!important;
+    border-radius:19px!important;
+  }
+  .home-kpis .kpi-icon,
+  #page-transactions .kpi-grid .kpi-icon,
+  #page-debts .kpi-grid .kpi-icon{
+    width:34px!important;
+    height:34px!important;
+    flex:0 0 34px!important;
+  }
+}
