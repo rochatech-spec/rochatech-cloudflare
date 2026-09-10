@@ -29,3 +29,16 @@ jobs:
           cat /tmp/register.json
           test "$STATUS" = "400"
           grep -q '"code":"INVALID_USERNAME"' /tmp/register.json
+
+
+      - name: Diagnóstico de registro válido
+        run: |
+          set -euo pipefail
+          USER="smoke.$(date +%s)"
+          STATUS="$(curl -sS -o /tmp/register-valid.json -w '%{http_code} %{time_total}' \
+            -X POST https://ritmo-commercial.pages.dev/api/auth/register \
+            -H 'Content-Type: application/json' \
+            --data "{\"username\":\"$USER\",\"password\":\"SmokePass123!\"}")"
+          echo "HTTP/TIME=$STATUS"
+          cat /tmp/register-valid.json
+          echo
