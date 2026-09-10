@@ -1,8 +1,8 @@
-name: Ritmo Commercial • PWA + Android
+name: Ritmo Commercial • PWA
 
 on:
   push:
-    branches: [main, ritmo-commercial-bootstrap, ritmo-functional-hotfix-20260910, ritmo-finalize-20260910]
+    branches: [main, ritmo-commercial-bootstrap, 'ritmo-*']
     paths:
       - "ritmo-commercial/**"
       - ".github/workflows/ritmo-commercial.yml"
@@ -94,72 +94,9 @@ jobs:
           test -s dist/pwa-512.png
           grep -q 'standalone' dist/manifest.webmanifest
 
-  android:
-    name: Gerar APK Android • Tauri 2
-    needs: quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: ritmo-commercial
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: android-actions/setup-android@v3
-      - name: Preparar Rust e Android
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
-      - name: Instalar dependências
-        run: npm install --no-audit --no-fund
-      - name: Validar e compilar frontend
-        env:
-          VITE_API_URL: https://ritmo-commercial.pages.dev/api
-        run: |
-          npm run check
-          npm run build
-      - name: Inicializar e compilar Tauri Android
-        env:
-          VITE_API_URL: https://ritmo-commercial.pages.dev/api
-          CI: "true"
-        run: |
-          set -euo pipefail
-          rm -rf src-tauri/gen/android
-          npm run tauri android init -- --ci
-          npm run tauri icon public/pwa-512.png
-          npm run tauri android build -- --apk --debug
-          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | grep -E 'universal.*debug|debug.*universal|debug' | head -1)"
-          test -n "$APK"
-          test -s "$APK"
-          cp "$APK" Ritmo-Android.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs Ritmo-Android.apk
-          sha256sum Ritmo-Android.apk > Ritmo-Android.apk.sha256
-      - name: Publicar APK do workflow
-        uses: actions/upload-artifact@v4
-        with:
-          name: Ritmo-Android-APK-Tauri
-          path: |
-            ritmo-commercial/Ritmo-Android.apk
-            ritmo-commercial/Ritmo-Android.apk.sha256
-          if-no-files-found: error
-          retention-days: 30
-
   promote:
     name: Promover versão validada para main
-    needs: [quality, android]
+    needs: [quality]
     if: github.ref == 'refs/heads/ritmo-commercial-bootstrap'
     runs-on: ubuntu-latest
     steps:
