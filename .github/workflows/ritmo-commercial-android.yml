@@ -3,7 +3,7 @@ name: Ritmo Commercial • Android APK
 
 on:
   push:
-    branches: [ritmo-commercial-bootstrap]
+    branches: [ritmo-commercial-bootstrap, main]
     paths:
       - ".github/workflows/ritmo-commercial-android.yml"
       - "ritmo-commercial/src/**"
@@ -65,7 +65,9 @@ jobs:
           git add -f ritmo-commercial/android
           if ! git diff --cached --quiet; then
             git commit -m "feat(ritmo-commercial): adicionar projeto Capacitor Android"
-            git push origin HEAD:ritmo-commercial-bootstrap
+            if [ "$GITHUB_REF_NAME" = "ritmo-commercial-bootstrap" ]; then
+              git push origin HEAD:ritmo-commercial-bootstrap
+            fi
           fi
       - name: Compilar APK debug instalável
         run: |
