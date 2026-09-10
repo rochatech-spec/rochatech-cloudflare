@@ -302,7 +302,7 @@ export default function App() {
     document.querySelectorAll<HTMLElement>('.nav-item[data-go],#bottomNav button[data-go]').forEach(b=>b.classList.toggle('active',b.dataset.go===currentPage));setText('miniTitle',titles[currentPage]);
     document.querySelectorAll<HTMLElement>('.switch').forEach(sw=>{const enabled=sw.dataset.setting==='due'?Boolean(profile.dueNotifications):Boolean(profile.goalNotifications);sw.classList.toggle('on',enabled);});
     requestAnimationFrame(()=>{try{createIcons({icons});}catch{}});
-  },[transactions,debts,goals,events,profile,totals,txFilter,txSearch,txDateFrom,txDateTo,calendarCursor,selectedDate,currentPage,last12,modal,authView,recoveryCode,sheetOpen]);
+  },[transactions,debts,goals,events,profile,totals,txFilter,txSearch,txDateFrom,txDateTo,calendarCursor,selectedDate,currentPage,last12,modal,authView,recoveryCode]);
 
   useEffect(()=>{const e=document.getElementById('recoveryCodeText');if(e)e.textContent=recoveryCode||'—';},[recoveryCode,authView]);
 
@@ -319,30 +319,122 @@ export default function App() {
     return()=>{document.body.classList.remove('mobile-fab-menu-open');fab.removeEventListener('pointerdown',down);fab.removeEventListener('pointermove',move);fab.removeEventListener('pointerup',end);fab.removeEventListener('pointercancel',end);fab.removeEventListener('click',click);document.removeEventListener('click',outside);window.removeEventListener('resize',resize)};
   },[authenticated]);
 
-  async function busy<T>(fn:()=>Promise<T>,success?:string){if(busyRef.current)throw new Error('busy');busyRef.current=true;setLoading(true);try{const r=await fn();if(success)notify(success);return r;}catch(e:any){if(e?.message!=='busy')notify(e instanceof ApiError?e.message:(e?.message||'Não foi possível concluir a operação.'));throw e;}finally{busyRef.current=false;setLoading(false);}}
-  async function login(){const username=(form.loginUser||'').trim(),password=form.loginPass||'';if(!username||!password)return notify('Preencha usuário e senha.');try{const out=await busy(()=>api.login({username,password}));if('requiresDeviceVerification'in out){setPendingDeviceVerification(out.verificationId);setAuthView('device');resetForm({loginUser:username});notify('Confirme o código para autorizar este aparelho.');return;}await applyAuth(out);notify('Bem-vindo ao Ritmo.');}catch(e:any){if(e instanceof ApiError&&e.status===428&&(e.details as any)?.verificationId){setPendingDeviceVerification((e.details as any).verificationId);setAuthView('device');notify('Novo aparelho detectado. Confirme seu código de recuperação.');}}}
-  async function register(){const displayName=(form.firstUser||'').trim().replace(/\s+/g,' '),password=form.firstPass||'',confirm=form.firstPassConfirm||'';if(displayName.length<2)return notify('Informe seu nome completo.');if(password.length<8)return notify('A senha precisa ter pelo menos 8 caracteres.');if(password!==confirm)return notify('As senhas não conferem.');try{const out=await busy(()=>api.register({displayName,password}));setPendingActivationToken(out.activationToken);setRecoveryCode(out.recoveryCode||'');setGeneratedUsername(out.user.username||'');setAuthView('code');notify(`Usuário ${out.user.username} criado. Guarde seu código de recuperação.`);}catch{}}
-  async function recover(){const username=(form.recoverUser||'').trim(),code=(form.recoverCode||'').trim(),p=form.recoverPass||'',p2=form.recoverPass2||'';if(!username||!code||!p)return notify('Preencha os dados de recuperação.');if(p.length<8)return notify('A nova senha precisa ter pelo menos 8 caracteres.');if(p!==p2)return notify('As senhas não conferem.');try{const out=await busy(()=>api.recover({username,recoveryCode:code,newPassword:p}));await applyAuth(out);notify('Senha redefinida e aparelho autorizado.');}catch{}}
-  async function authorizeDevice(){const code=(form.newDeviceCode||'').trim();if(!code)return notify('Informe o código de recuperação.');try{const out=await busy(()=>api.authorizeDevice({verificationId:pendingDeviceVerification,recoveryCode:code}));setPendingDeviceVerification('');await applyAuth(out);notify('Aparelho autorizado com segurança.');}catch{}}
+  async function busy<T>(fn:()=>Promise<T>){
+    if(busyRef.current)throw new Error('busy');
+    busyRef.current=true;
+    setLoading(true);
+    try{return await fn();}
+    catch(e:any){
+      if(e?.message!=='busy')notify(e instanceof ApiError?e.message:(e?.message||'Não foi possível concluir.'));
+      throw e;
+    }finally{
+      busyRef.current=false;
+      setLoading(false);
+    }
+  }
+
+  async function optimistic<T>(
+    mutate:(current:Bootstrap)=>Bootstrap,
+    request:()=>Promise<T>,
+    reconcile?:(current:Bootstrap,result:T)=>Bootstrap
+  ){
+    if(busyRef.current)throw new Error('busy');
+    busyRef.current=true;
+    const snapshot=dataRef.current;
+    const optimisticState=mutate(snapshot);
+    dataRef.current=optimisticState;
+    setData(optimisticState);
+    try{
+      const result=await request();
+      if(reconcile){
+        const settled=reconcile(dataRef.current,result);
+        dataRef.current=settled;
+        setData(settled);
+      }
+      return result;
+    }catch(e:any){
+      dataRef.current=snapshot;
+      setData(snapshot);
+      if(e?.message!=='busy')notify(e instanceof ApiError?e.message:(e?.message||'Não foi possível salvar.'));
+      throw e;
+    }finally{
+      busyRef.current=false;
+    }
+  }
+
+  async function login(){
+    const username=(form.loginUser||rememberedUsername||'').trim(),password=form.loginPass||'';
+    if(!username||!password)return notify('Informe usuário e senha.');
+    try{
+      const out=await busy(()=>api.login({username,password}));
+      if('requiresDeviceVerification'in out){
+        setPendingDeviceVerification(out.verificationId);
+        setAuthView('device');
+        resetForm({loginUser:username});
+        notify('Confirme seu código de recuperação.');
+        return;
+      }
+      await applyAuth(out);
+    }catch(e:any){
+      if(e instanceof ApiError&&e.status===428&&(e.details as any)?.verificationId){
+        setPendingDeviceVerification((e.details as any).verificationId);
+        setAuthView('device');
+        notify('Confirme seu código de recuperação.');
+      }
+    }
+  }
+
+  async function register(){
+    const displayName=(form.firstUser||'').trim().replace(/\s+/g,' '),password=form.firstPass||'',confirm=form.firstPassConfirm||'';
+    if(displayName.length<2)return notify('Informe seu nome completo.');
+    if(password.length<8)return notify('Use pelo menos 8 caracteres.');
+    if(password!==confirm)return notify('As senhas não conferem.');
+    try{
+      const out=await busy(()=>api.register({displayName,password}));
+      setPendingActivationToken(out.activationToken);
+      setRecoveryCode(out.recoveryCode||'');
+      setGeneratedUsername(out.user.username||'');
+      setAuthView('code');
+    }catch{}
+  }
+
+  async function recover(){
+    const username=(form.recoverUser||'').trim(),code=(form.recoverCode||'').trim(),p=form.recoverPass||'',p2=form.recoverPass2||'';
+    if(!username||!code||!p)return notify('Preencha os dados de recuperação.');
+    if(p.length<8)return notify('Use pelo menos 8 caracteres.');
+    if(p!==p2)return notify('As senhas não conferem.');
+    try{
+      const out=await busy(()=>api.recover({username,recoveryCode:code,newPassword:p}));
+      await applyAuth(out);
+      notify('Senha atualizada.');
+    }catch{}
+  }
+
+  async function authorizeDevice(){
+    const code=(form.newDeviceCode||'').trim();
+    if(!code)return notify('Informe o código de recuperação.');
+    try{
+      const out=await busy(()=>api.authorizeDevice({verificationId:pendingDeviceVerification,recoveryCode:code}));
+      setPendingDeviceVerification('');
+      await applyAuth(out);
+    }catch{}
+  }
+
   async function manualRefresh(){
     if(syncing||busyRef.current)return;
     setSyncing(true);
-    try{
-      await refresh();
-      notify('Dados atualizados e sincronizados.');
-    }catch(e){
+    try{await refresh();}
+    catch(e){
       if(e instanceof ApiError&&(e.status===401||e.status===403)){
         await clearLocalAuth();
         setAuthenticated(false);
         setData(emptyData);
         setAuthView('login');
-        notify('Sua sessão expirou. Entre novamente.');
+        notify('Sua sessão expirou.');
       }else{
-        notify(e instanceof ApiError?e.message:'Não foi possível atualizar agora.');
+        notify(e instanceof ApiError?e.message:'Falha ao sincronizar.');
       }
-    }finally{
-      setSyncing(false);
-    }
+    }finally{setSyncing(false);}
   }
 
   const handleInput=(e:React.FormEvent<HTMLElement>)=>{
