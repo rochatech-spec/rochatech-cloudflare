@@ -3380,3 +3380,21 @@ html[data-theme="dark"] .mini-action.danger{background:rgba(224,91,104,.13);colo
     flex:0 0 34px!important;
   }
 }
+
+
+/* Garantia final: busca de movimentações visível no mobile */
+@media(max-width:1023px){
+  #page-transactions .tx-search-field{
+    display:flex!important;
+    align-items:center!important;
+    gap:8px!important;
+    width:100%!important;
+    min-width:0!important;
+  }
+  #page-transactions .tx-search-field input{
+    display:block!important;
+    flex:1 1 auto!important;
+    min-width:0!important;
+    width:100%!important;
+  }
+}
