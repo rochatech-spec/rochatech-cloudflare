@@ -36,6 +36,8 @@ export default function App() {
   const [pwaInstallReady,setPwaInstallReady]=useState(()=>canInstallPWA());
   const [biometricAvailable,setBiometricAvailable]=useState(false);
   const [recoveryCode,setRecoveryCode]=useState('');
+  const [generatedUsername,setGeneratedUsername]=useState('');
+  const [syncing,setSyncing]=useState(false);
   const [pendingDeviceVerification,setPendingDeviceVerification]=useState('');
   const [pendingActivationToken,setPendingActivationToken]=useState('');
   const [toastState,setToastState]=useState({open:false,message:''});
@@ -238,9 +240,29 @@ export default function App() {
 
   async function busy<T>(fn:()=>Promise<T>,success?:string){if(busyRef.current)throw new Error('busy');busyRef.current=true;setLoading(true);try{const r=await fn();if(success)notify(success);return r;}catch(e:any){if(e?.message!=='busy')notify(e instanceof ApiError?e.message:(e?.message||'Não foi possível concluir a operação.'));throw e;}finally{busyRef.current=false;setLoading(false);}}
   async function login(){const username=(form.loginUser||'').trim(),password=form.loginPass||'';if(!username||!password)return notify('Preencha usuário e senha.');try{const out=await busy(()=>api.login({username,password}));if('requiresDeviceVerification'in out){setPendingDeviceVerification(out.verificationId);setAuthView('device');resetForm({loginUser:username});notify('Confirme o código para autorizar este aparelho.');return;}await applyAuth(out);notify('Bem-vindo ao Ritmo.');}catch(e:any){if(e instanceof ApiError&&e.status===428&&(e.details as any)?.verificationId){setPendingDeviceVerification((e.details as any).verificationId);setAuthView('device');notify('Novo aparelho detectado. Confirme seu código de recuperação.');}}}
-  async function register(){const username=(form.firstUser||'').trim(),password=form.firstPass||'',confirm=form.firstPassConfirm||'';if(username.length<3)return notify('Use um usuário com pelo menos 3 caracteres.');if(password.length<8)return notify('A senha precisa ter pelo menos 8 caracteres.');if(password!==confirm)return notify('As senhas não conferem.');try{const out=await busy(()=>api.register({username,password}));setPendingActivationToken(out.activationToken);setRecoveryCode(out.recoveryCode||'');setAuthView('code');notify('Acesso criado. Guarde seu código de recuperação.');}catch{}}
+  async function register(){const displayName=(form.firstUser||'').trim().replace(/\s+/g,' '),password=form.firstPass||'',confirm=form.firstPassConfirm||'';if(displayName.length<2)return notify('Informe seu nome completo.');if(password.length<8)return notify('A senha precisa ter pelo menos 8 caracteres.');if(password!==confirm)return notify('As senhas não conferem.');try{const out=await busy(()=>api.register({displayName,password}));setPendingActivationToken(out.activationToken);setRecoveryCode(out.recoveryCode||'');setGeneratedUsername(out.user.username||'');setAuthView('code');notify(`Usuário ${out.user.username} criado. Guarde seu código de recuperação.`);}catch{}}
   async function recover(){const username=(form.recoverUser||'').trim(),code=(form.recoverCode||'').trim(),p=form.recoverPass||'',p2=form.recoverPass2||'';if(!username||!code||!p)return notify('Preencha os dados de recuperação.');if(p.length<8)return notify('A nova senha precisa ter pelo menos 8 caracteres.');if(p!==p2)return notify('As senhas não conferem.');try{const out=await busy(()=>api.recover({username,recoveryCode:code,newPassword:p}));await applyAuth(out);notify('Senha redefinida e aparelho autorizado.');}catch{}}
   async function authorizeDevice(){const code=(form.newDeviceCode||'').trim();if(!code)return notify('Informe o código de recuperação.');try{const out=await busy(()=>api.authorizeDevice({verificationId:pendingDeviceVerification,recoveryCode:code}));setPendingDeviceVerification('');await applyAuth(out);notify('Aparelho autorizado com segurança.');}catch{}}
+  async function manualRefresh(){
+    if(syncing||busyRef.current)return;
+    setSyncing(true);
+    try{
+      await refresh();
+      notify('Dados atualizados e sincronizados.');
+    }catch(e){
+      if(e instanceof ApiError&&(e.status===401||e.status===403)){
+        await clearLocalAuth();
+        setAuthenticated(false);
+        setData(emptyData);
+        setAuthView('login');
+        notify('Sua sessão expirou. Entre novamente.');
+      }else{
+        notify(e instanceof ApiError?e.message:'Não foi possível atualizar agora.');
+      }
+    }finally{
+      setSyncing(false);
+    }
+  }
 
   const handleInput=(e:React.FormEvent<HTMLElement>)=>{const t=e.target as HTMLInputElement|HTMLSelectElement;if(!t.id)return;setField(t.id,t.value);if(t.id==='txSearch')setTxSearch(t.value);};
   const navigate=(page:string)=>{if(page in titles){setCurrentPage(page as Page);setModal(null);setSheetOpen(false);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}};
@@ -266,7 +288,7 @@ export default function App() {
       case 'finishRecoveryBtn':if(!pendingActivationToken){setAuthView('register');return notify('Refaça o primeiro acesso para gerar um novo código.');}try{const out=await busy(()=>api.confirmRegistration(pendingActivationToken));setPendingActivationToken('');await applyAuth(out);notify('Código confirmado. Seu acesso está pronto.');}catch{}return;
       case 'togglePassword':{const p=document.getElementById('loginPass') as HTMLInputElement|null;if(p)p.type=p.type==='password'?'text':'password';return;}
       case 'prevMonth':{const d=new Date(calendarCursor);d.setMonth(d.getMonth()-1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;}case 'nextMonth':{const d=new Date(calendarCursor);d.setMonth(d.getMonth()+1);d.setDate(1);setCalendarCursor(d);setSelectedDate(new Date(d));return;}
-      case 'searchBtn':case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;case 'notifyBtn':setModal({kind:'notifications'});return;case 'mobileMore':setSheetOpen(true);return;
+      case 'syncNowBtn':case 'mobileSync':await manualRefresh();return;case 'searchBtn':case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;case 'notifyBtn':setModal({kind:'notifications'});return;case 'mobileMore':setSheetOpen(true);return;
     }
     const action=button.dataset.action;
     if(action==='close-modal'){setModal(null);return;}if(action==='close-sheet'){setSheetOpen(false);return;}if(action==='new-transaction'){setModal({kind:'new-transaction'});resetForm({newTxDate:todayISO(),newTxType:'Despesa'});return;}if(action==='new-goal'){setModal({kind:'new-goal'});resetForm();return;}if(action==='new-event'){setModal({kind:'new-event'});resetForm({newEventDate:isoFromDate(selectedDate)});return;}if(action==='new-debt'){setModal({kind:'new-debt'});resetForm();return;}if(action==='debt-payment'){setModal({kind:'debt-payment',id:button.dataset.debt});resetForm({debtPayDate:todayISO()});return;}if(action==='goal-add'){setModal({kind:'goal-add',id:button.dataset.goal});resetForm();return;}if(action==='edit-profile'){setModal({kind:'edit-profile'});resetForm({profileDisplayName:profile.displayName});return;}if(action==='change-password'){setModal({kind:'change-password'});resetForm();return;}if(action==='recovery-code'){setModal({kind:'recovery-code'});resetForm();return;}if(action==='privacy'){setModal({kind:'privacy'});return;}if(action==='categories'){setModal({kind:'categories'});return;}if(action==='export'){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ritmo-backup-${todayISO()}.json`;a.click();URL.revokeObjectURL(url);notify('Backup exportado.');return;}if(action==='logout'){try{await api.logout();}catch{}await clearLocalAuth();setAuthenticated(false);setData(emptyData);setAuthView('login');notify('Sessão encerrada.');return;}
@@ -427,6 +449,9 @@ export default function App() {
             
 
             <div className='topbar-right'>
+              <button aria-label='Atualizar dados' className={`premium-btn btn-glass icon-btn sync-btn ${syncing ? "syncing" : ""}`.trim()} disabled={syncing} id='syncNowBtn' title='Atualizar e sincronizar'>
+                <i data-lucide='refresh-cw'></i>
+              </button>
               <button className='premium-btn btn-glass icon-btn' id='searchBtn'>
                 <i data-lucide='search'></i>
               </button>
@@ -453,6 +478,9 @@ export default function App() {
               <img alt='Ritmo' className='brand-logo' data-ritmo-logo='' src='/ritmo-logo.webp' />
             </div>
             <div style={{display: 'flex', gap: '8px'} as React.CSSProperties}>
+              <button aria-label='Atualizar dados' className={`premium-btn btn-glass icon-btn sync-btn ${syncing ? "syncing" : ""}`.trim()} disabled={syncing} id='mobileSync' title='Atualizar e sincronizar'>
+                <i data-lucide='refresh-cw'></i>
+              </button>
               <button className='premium-btn btn-glass icon-btn' id='mobileSearch'>
                 <i data-lucide='search'></i>
               </button>
@@ -1716,18 +1744,22 @@ export default function App() {
             
 
             <div className='caption'>
-              Crie seu acesso. Ao finalizar, o Ritmo gerará um código de recuperação para você guardar.
+              Informe seu nome e crie uma senha. O Ritmo gera um usuário único e um código de recuperação para você guardar.
             </div>
             
 
-            <label className='reference-field-label'>
-              Novo usuário
+            <label className='reference-field-label' htmlFor='firstUser'>
+              Nome completo
             </label>
             
 
             <div className='field liquid-soft reference-field'>
               <i data-lucide='user-plus'></i>
-              <input id='firstUser' placeholder='Escolha seu login' />
+              <input autoComplete='name' id='firstUser' placeholder='Ex.: João Pedro da Silva' />
+            </div>
+            <div className='generated-login-hint'>
+              <i data-lucide='at-sign'></i>
+              <span>Seu usuário será gerado automaticamente, normalmente no formato <strong>nome.ultimosobrenome</strong>.</span>
             </div>
             
 
@@ -1766,6 +1798,11 @@ export default function App() {
             </h2>
             <div className='caption'>
               Guarde este código em um lugar seguro. Ele será necessário para redefinir sua senha e também para configurar o acesso em outro aparelho.
+            </div>
+            <div className='generated-user-box'>
+              <span>Seu usuário</span>
+              <strong>@{generatedUsername || 'usuario'}</strong>
+              <small>Use este usuário para entrar no APK, PWA/TWA ou desktop.</small>
             </div>
             <div className='recovery-code-box'>
               <span>
