@@ -41,7 +41,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export type AuthResponse = { user: AuthUser; sessionToken: string; deviceToken: string };
 export type RegistrationResponse = { user: AuthUser; activationToken: string; recoveryCode: string };
-export type LoginResponse = AuthResponse;
+export type DeviceVerificationResponse = { requiresDeviceVerification: true; verificationId: string; username: string };
+export type LoginResponse = AuthResponse | DeviceVerificationResponse;
 
 export async function persistAuth(auth: AuthResponse) {
   await Promise.all([
