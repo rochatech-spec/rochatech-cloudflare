@@ -270,14 +270,14 @@ async function handlePasskeys(request:Request,env:Env,path:string){
 
 async function bootstrap(env:Env,userId:string){
   const [profile,tx,debts,goals,events]=await env.DB.batch([
-    env.DB.prepare('SELECT u.display_name,p.theme,p.due_notifications,p.goal_notifications FROM users u JOIN profiles p ON p.user_id=u.id WHERE u.id=?').bind(userId),
+    env.DB.prepare('SELECT u.username,u.display_name,p.theme,p.due_notifications,p.goal_notifications FROM users u JOIN profiles p ON p.user_id=u.id WHERE u.id=?').bind(userId),
     env.DB.prepare('SELECT id,date,description AS desc,category AS cat,type,value_cents,icon FROM transactions WHERE user_id=? ORDER BY date DESC,created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,name,total_cents,remaining_cents,due,category FROM debts WHERE user_id=? ORDER BY due').bind(userId),
     env.DB.prepare('SELECT id,name,target_cents,saved_cents,due FROM goals WHERE user_id=? ORDER BY created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,title,date,time,note FROM events WHERE user_id=? ORDER BY date,time').bind(userId),
   ]);
   const pr:any=profile.results?.[0]||{};
-  return {profile:{displayName:pr.display_name||'',theme:pr.theme||'system',dueNotifications:Boolean(pr.due_notifications),goalNotifications:Boolean(pr.goal_notifications)},transactions:(tx.results as any[]).map(x=>({...x,value:moneyNumber(x.value_cents),value_cents:undefined})),debts:(debts.results as any[]).map(x=>({...x,total:moneyNumber(x.total_cents),remaining:moneyNumber(x.remaining_cents),total_cents:undefined,remaining_cents:undefined})),goals:(goals.results as any[]).map(x=>({...x,target:moneyNumber(x.target_cents),saved:moneyNumber(x.saved_cents),target_cents:undefined,saved_cents:undefined})),events:events.results};
+  return {profile:{displayName:pr.display_name||'',username:pr.username||'',theme:pr.theme||'system',dueNotifications:Boolean(pr.due_notifications),goalNotifications:Boolean(pr.goal_notifications)},transactions:(tx.results as any[]).map(x=>({...x,value:moneyNumber(x.value_cents),value_cents:undefined})),debts:(debts.results as any[]).map(x=>({...x,total:moneyNumber(x.total_cents),remaining:moneyNumber(x.remaining_cents),total_cents:undefined,remaining_cents:undefined})),goals:(goals.results as any[]).map(x=>({...x,target:moneyNumber(x.target_cents),saved:moneyNumber(x.saved_cents),target_cents:undefined,saved_cents:undefined})),events:events.results};
 }
 
 async function handleData(request:Request,env:Env,path:string){
