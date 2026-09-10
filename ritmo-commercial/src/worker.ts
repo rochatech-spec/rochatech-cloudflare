@@ -316,7 +316,7 @@ async function handlePush(request:Request,env:Env,path:string){
   }
   if(path==='/push/test'&&request.method==='POST'){
     const ctx=await requireAuth(request,env),rows=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE user_id=?').bind(ctx.user.id).all<any>();let delivered=0;
-    for(const s of rows.results){try{await sendPushNotification({endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},{title:'Ritmo',body:'Notificações ativadas com sucesso.',icon:'/pwa-192.svg',data:{url:'/'}},{publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY,subject:env.VAPID_SUBJECT});delivered++;}catch(e:any){if(e?.statusCode===404||e?.statusCode===410)await env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(s.id).run();}}
+    for(const s of rows.results){try{await sendPushNotification({endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},{title:'Ritmo',body:'Notificações ativadas com sucesso.',url:'/',tag:'ritmo-notification'},{publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY,subject:env.VAPID_SUBJECT});delivered++;}catch(e:any){if(e?.statusCode===404||e?.statusCode===410)await env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(s.id).run();}}
     return json({delivered});
   }
   return null;
