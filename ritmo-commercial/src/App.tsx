@@ -10,7 +10,7 @@ type ModalKind = 'new-transaction'|'new-goal'|'new-event'|'new-debt'|'debt-payme
 type ModalState = { kind: ModalKind; id?: string } | null;
 type FormState = Record<string,string>;
 
-const emptyData: Bootstrap = { profile:{displayName:'',theme:'system',dueNotifications:true,goalNotifications:true}, transactions:[], debts:[], goals:[], events:[] };
+const emptyData: Bootstrap = { profile:{displayName:'',theme:'system',dueNotifications:true,goalNotifications:true}, transactions:[], debts:[], goals:[], events:[], files:[] };
 const titles: Record<Page,string> = {home:'Início',transactions:'Movimentações',debts:'Dívidas',calendar:'Planejamento',goals:'Metas',reports:'Relatórios',profile:'Perfil',settings:'Ajustes'};
 const money = (v:number) => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
 const signedMoney = (v:number) => `${v>0?'+ ':v<0?'- ':''}${money(Math.abs(v))}`;
