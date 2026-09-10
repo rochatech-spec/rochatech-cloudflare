@@ -64,3 +64,11 @@ assert.ok(storage.includes('@aparajita/capacitor-secure-storage'), 'Tokens nativ
 assert.ok(worker.includes('RECOVERY_PEPPER'), 'Código de recuperação não usa segredo de servidor.');
 assert.ok(worker.includes("'NEW_DEVICE_RECOVERY_REQUIRED'") || worker.includes("requiresDeviceVerification:true"), 'Fluxo de novo aparelho não exige verificação.');
 console.log(`OK: ${originalIds.length} IDs estáticos preservados; autenticação, camadas, API, banco e PWA validados estaticamente.`);
+
+
+assert(worker.includes('FILES_KV: KVNamespace'), 'Worker deve usar FILES_KV para arquivos.');
+assert(worker.includes("env.FILES_KV.put"), 'Upload deve gravar no Workers KV.');
+assert(worker.includes("env.FILES_KV.get"), 'Download deve ler do Workers KV.');
+assert(worker.includes("env.FILES_KV.delete"), 'Exclusão deve remover do Workers KV.');
+assert(!worker.includes('R2Bucket'), 'R2 não deve ser obrigatório no Worker.');
+assert(wrangler.includes('"binding": "FILES_KV"'), 'wrangler.jsonc deve declarar FILES_KV.');
