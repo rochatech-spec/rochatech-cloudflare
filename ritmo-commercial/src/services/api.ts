@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction, AuthUser } from '../types';
+import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction, AuthUser, StoredFile } from '../types';
 import { clearSessionToken, getAuthTokens, setDeviceToken as persistDeviceToken, setLastUsername, setSessionToken as persistSessionToken } from './authStorage';
 
 const API_URL = (import.meta.env.VITE_API_URL || (Capacitor.isNativePlatform() ? 'https://ritmo-commercial.pages.dev/api' : '/api')).replace(/\/$/, '');
@@ -81,6 +81,7 @@ export const api = {
   getVapidKey: () => request<{ publicKey: string }>('/push/vapid-public-key'),
   savePushSubscription: (subscription: PushSubscriptionJSON) => request<{ ok: true }>('/push/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
   sendTestPush: () => request<{ delivered: number }>('/push/test', { method: 'POST' }),
+  listFiles: () => request<StoredFile[]>('/files'),
   uploadFile: async (file: File) => {
     const form = new FormData(); form.append('file', file);
     return request<{ id: string; name: string; contentType: string; size: number }>('/files', { method: 'POST', body: form });
