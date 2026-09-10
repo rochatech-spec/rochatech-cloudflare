@@ -3,7 +3,7 @@ import {
   createIcons, ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, AtSign, Bell, BellOff, BellRing,
   CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, ChartNoAxesCombined, ChevronDown, ChevronLeft,
   ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, House, KeyRound,
-  Landmark, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
+  Landmark, Layers3, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
   RotateCcw, ScanFace, Search, Settings2, ShieldCheck, Smartphone, SunMoon, Target, TriangleAlert, User,
   UserPlus, UserRound, Wallet, WalletCards, X
 } from 'lucide';
@@ -35,7 +35,7 @@ const icons = {
   ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, AtSign, Bell, BellOff, BellRing,
   CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, ChartNoAxesCombined, ChevronDown, ChevronLeft,
   ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, House, KeyRound,
-  Landmark, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
+  Landmark, Layers3, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
   RotateCcw, ScanFace, Search, Settings2, ShieldCheck, Smartphone, SunMoon, Target, TriangleAlert, User,
   UserPlus, UserRound, Wallet, WalletCards, X
 };
