@@ -62,21 +62,33 @@ jobs:
           rm -rf src-tauri/gen/android
           npm run tauri android init -- --ci
           npm run tauri icon public/pwa-512.png
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("src-tauri/gen/android/app/build.gradle.kts")
+          s=p.read_text()
+          needle='getByName("release") {'
+          if needle not in s:
+              raise SystemExit("buildType release não encontrado")
+          s=s.replace(needle, needle+'\n            signingConfig = signingConfigs.getByName("debug")', 1)
+          p.write_text(s)
+          PY
           test -s src-tauri/gen/android/gradlew
-      - name: Compilar APK universal
+      - name: Compilar APK release otimizado
         env:
           VITE_API_URL: https://ritmo-commercial.pages.dev/api
           CI: "true"
         run: |
           set -euo pipefail
-          npm run tauri android build -- --apk --debug
-          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | grep -E 'universal.*debug|debug.*universal|debug' | head -1)"
+          npm run tauri android build -- --apk --target aarch64 --target armv7
+          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | grep -E 'release' | head -1)"
           test -n "$APK"
           test -s "$APK"
           cp "$APK" Ritmo-Android.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs Ritmo-Android.apk
           sha256sum Ritmo-Android.apk | tee Ritmo-Android.apk.sha256
-          test "$(stat -c%s Ritmo-Android.apk)" -gt 1000000
+          SIZE="$(stat -c%s Ritmo-Android.apk)"
+          test "$SIZE" -gt 1000000
+          test "$SIZE" -lt 250000000
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
