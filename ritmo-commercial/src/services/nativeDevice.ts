@@ -22,13 +22,18 @@ export function isBiometricsAvailable() { return isNativeApp() || browserSupport
 
 export async function getBiometricAvailability() {
   if (isNativeApp()) {
-    const { checkStatus } = await import('@tauri-apps/plugin-biometric');
+    const { checkStatus, BiometryType } = await import('@tauri-apps/plugin-biometric');
     const info = await checkStatus();
+    const method =
+      info.biometryType === BiometryType.FaceID ? 'face' :
+      info.biometryType === BiometryType.TouchID ? 'fingerprint' :
+      info.biometryType === BiometryType.Iris ? 'iris' : 'none';
     return {
       available: Boolean(info.isAvailable),
       strongAvailable: Boolean(info.isAvailable),
       reason: info.error || '',
       code: info.errorCode || '',
+      method,
     };
   }
   if (!browserSupportsWebAuthn()) return { available:false, strongAvailable:false, reason:'WebAuthn indisponível.', code:'webauthnUnavailable' };
@@ -48,9 +53,14 @@ export async function subscribeBiometricAvailability(listener: (available:boolea
 }
 
 async function nativeBiometricPrompt(reason: string) {
-  const { authenticate, checkStatus } = await import('@tauri-apps/plugin-biometric');
+  const { authenticate, checkStatus, BiometryType } = await import('@tauri-apps/plugin-biometric');
   const availability = await checkStatus();
   if (!availability.isAvailable) throw new Error(availability.error || 'Nenhuma biometria compatível está cadastrada neste aparelho.');
+  const method =
+    availability.biometryType === BiometryType.FaceID ? 'face' :
+    availability.biometryType === BiometryType.TouchID ? 'fingerprint' :
+    availability.biometryType === BiometryType.Iris ? 'iris' : 'none';
+  sessionStorage.setItem('ritmo.biometric-method', method);
   await authenticate(reason, {
     allowDeviceCredential: true,
     cancelTitle: 'Cancelar',
