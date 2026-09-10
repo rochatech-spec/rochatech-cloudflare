@@ -3100,3 +3100,54 @@ body.auth-active #loginPage{
     pointer-events:auto!important;
   }
 }
+
+
+/* Ritmo • cadastro automático + sincronização manual */
+.generated-login-hint{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  margin:8px 2px 13px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.45;
+}
+.generated-login-hint svg{
+  width:15px;
+  height:15px;
+  flex:0 0 auto;
+  margin-top:1px;
+  color:var(--emerald);
+}
+.generated-login-hint strong{color:var(--text);font-weight:800}
+.generated-user-box{
+  margin:14px 0 10px;
+  padding:14px 16px;
+  border-radius:18px;
+  background:rgba(24,183,163,.09);
+  border:1px solid rgba(24,183,163,.13);
+  display:grid;
+  gap:4px;
+}
+.generated-user-box span{
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.generated-user-box strong{
+  font-size:16px;
+  letter-spacing:-.02em;
+  color:var(--text);
+  overflow-wrap:anywhere;
+}
+.generated-user-box small{
+  font-size:9.5px;
+  line-height:1.4;
+  color:var(--muted);
+}
+.sync-btn{position:relative}
+.sync-btn.syncing svg{animation:ritmoSyncSpin .8s linear infinite}
+.sync-btn:disabled{opacity:.72;cursor:wait}
+@keyframes ritmoSyncSpin{to{transform:rotate(360deg)}}
