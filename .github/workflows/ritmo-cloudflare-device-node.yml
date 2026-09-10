@@ -1,5 +1,5 @@
 name: Ritmo Commercial • Cloudflare Device Node Deploy
-# final-kv-sync-auto-user-immutable-deploy: 2026-09-10-v2
+# final-kv-sync-auto-user-immutable-deploy: 2026-09-10-v3
 
 on:
   push:
