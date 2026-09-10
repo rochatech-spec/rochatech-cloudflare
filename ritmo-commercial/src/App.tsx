@@ -1,12 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createIcons, icons } from 'lucide';
+import {
+  createIcons, ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, AtSign, Bell, BellOff, BellRing,
+  CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, ChartNoAxesCombined, ChevronDown, ChevronLeft,
+  ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, House, KeyRound,
+  Landmark, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
+  RotateCcw, ScanFace, Search, Settings2, ShieldCheck, Smartphone, SunMoon, Target, TriangleAlert, User,
+  UserPlus, UserRound, Wallet, WalletCards, X
+} from 'lucide';
 import { api, ApiError, clearLocalAuth, persistAuth, type AuthResponse } from './services/api';
-import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, isNativeApp, loginWithBiometrics, registerBiometrics, shouldGateNativeSession, subscribeBiometricAvailability, subscribePWAInstallAvailability, syncNativeFinancialNotifications, unlockNativeSession } from './services/nativeDevice';
-import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction } from './types';
+import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, loginWithBiometrics, registerBiometrics, subscribePWAInstallAvailability } from './services/nativeDevice';
+import { getRememberedUsername, hasStoredSession, isRememberUserEnabled, setRememberedUsername as saveRememberedUsername } from './services/authStorage';
+import type { Bootstrap, Debt, DebtPayment, EventItem, Goal, GoalContribution, Profile, Transaction } from './types';
 
 type Page = 'home'|'transactions'|'debts'|'calendar'|'goals'|'reports'|'profile'|'settings';
 type AuthView = 'login'|'register'|'code'|'recover'|'device';
-type ModalKind = 'new-transaction'|'edit-transaction'|'new-goal'|'edit-goal'|'new-event'|'edit-event'|'new-debt'|'edit-debt'|'debt-payment'|'debt-history'|'edit-debt-payment'|'goal-add'|'goal-history'|'edit-goal-contribution'|'edit-profile'|'change-password'|'recovery-code'|'new-recovery-code'|'privacy'|'categories'|'search'|'notifications'|null;
+type ModalKind = 'new-transaction'|'edit-transaction'|'new-goal'|'edit-goal'|'new-event'|'edit-event'|'new-debt'|'edit-debt'|'debt-payment'|'debt-history'|'edit-debt-payment'|'goal-add'|'goal-history'|'edit-goal-contribution'|'edit-profile'|'change-password'|'recovery-code'|'new-recovery-code'|'search'|'notifications'|null;
 type ModalState = { kind: ModalKind; id?: string } | null;
 type FormState = Record<string,string>;
 
@@ -23,6 +31,14 @@ const iconMarkup=(name:string)=>`<i data-lucide="${escapeHtml(name)}"></i>`;
 const empty=(icon:string,title:string,subtitle:string)=>`<div class="empty-state">${iconMarkup(icon)}<strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></div>`;
 const parseMoney=(value:string)=>{ const clean=String(value||'').replace(/[^\d,.-]/g,'').replace(/\.(?=.*\.)/g,'').replace(',','.'); const n=Number(clean); return Number.isFinite(n)?n:0; };
 const initials=(name:string)=>{const p=String(name||'R').trim().split(/\s+/).filter(Boolean);return `${p[0]?.[0]||'R'}${p.length>1?p[p.length-1]?.[0]||'':''}`.toUpperCase();};
+const icons = {
+  ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, AtSign, Bell, BellOff, BellRing,
+  CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, ChartNoAxesCombined, ChevronDown, ChevronLeft,
+  ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, House, KeyRound,
+  Landmark, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
+  RotateCcw, ScanFace, Search, Settings2, ShieldCheck, Smartphone, SunMoon, Target, TriangleAlert, User,
+  UserPlus, UserRound, Wallet, WalletCards, X
+};
 
 export default function App() {
   const [currentPage,setCurrentPage]=useState<Page>('home');
@@ -30,11 +46,12 @@ export default function App() {
   const [authView,setAuthView]=useState<AuthView>('login');
   const [data,setData]=useState<Bootstrap>(emptyData);
   const [modal,setModal]=useState<ModalState>(null);
-  const [sheetOpen,setSheetOpen]=useState(false);
   const [form,setForm]=useState<FormState>({});
   const [loading,setLoading]=useState(false);
   const [pwaInstallReady,setPwaInstallReady]=useState(()=>canInstallPWA());
-  const [biometricAvailable,setBiometricAvailable]=useState(false);
+  const [biometricAvailable,setBiometricAvailable]=useState(()=>{try{return sessionStorage.getItem('ritmo.biometric.available')==='1'}catch{return false}});
+  const [rememberLogin,setRememberLogin]=useState(()=>isRememberUserEnabled());
+  const [rememberedUsername,setRememberedLoginUser]=useState(()=>getRememberedUsername());
   const [desktopViewport,setDesktopViewport]=useState(()=>window.matchMedia('(min-width:1024px)').matches);
   const [recoveryCode,setRecoveryCode]=useState('');
   const [generatedUsername,setGeneratedUsername]=useState('');
@@ -50,6 +67,7 @@ export default function App() {
   const [selectedDate,setSelectedDate]=useState(()=>new Date());
   const toastTimer=useRef<number|undefined>(undefined);
   const busyRef=useRef(false);
+  const dataRef=useRef(data);
 
   const transactions=data.transactions, debts=data.debts, debtPayments=data.debtPayments||[], goals=data.goals, goalContributions=data.goalContributions||[], events=data.events, profile=data.profile;
   const notify=useCallback((message:string)=>{
@@ -58,6 +76,14 @@ export default function App() {
   },[]);
   const setField=(id:string,value:string)=>setForm(f=>({...f,[id]:value}));
   const resetForm=(values:FormState={})=>setForm(values);
+  useEffect(()=>{dataRef.current=data},[data]);
+  useEffect(()=>{
+    const remembered=getRememberedUsername();
+    if(!remembered)return;
+    setRememberedLoginUser(remembered);
+    setRememberLogin(true);
+    setForm(current=>({...current,loginUser:current.loginUser||remembered}));
+  },[]);
 
   const syncRef=useRef(false);
   const refresh=useCallback(async()=>{
@@ -70,7 +96,19 @@ export default function App() {
       syncRef.current=false;
     }
   },[]);
-  const applyAuth=useCallback(async(out:AuthResponse)=>{await persistAuth(out);setAuthenticated(true);setAuthView('login');await refresh();},[refresh]);
+  const applyAuth=useCallback(async(out:AuthResponse)=>{
+    await persistAuth(out);
+    if(rememberLogin){
+      saveRememberedUsername(out.user.username);
+      setRememberedLoginUser(out.user.username);
+    }else{
+      saveRememberedUsername();
+      setRememberedLoginUser('');
+    }
+    setAuthenticated(true);
+    setAuthView('login');
+    await refresh();
+  },[refresh,rememberLogin]);
 
   useEffect(()=>subscribePWAInstallAvailability(() => setPwaInstallReady(canInstallPWA())),[]);
   useEffect(()=>{
@@ -82,36 +120,24 @@ export default function App() {
   },[]);
 
   useEffect(()=>{
-    let dispose: (()=>void)|undefined;
     let active=true;
-    (async()=>{
-      try{
-        const info=await getBiometricAvailability();
-        if(active)setBiometricAvailable(info.available);
-        dispose=await subscribeBiometricAvailability((available)=>{ if(active)setBiometricAvailable(available); });
-      }catch{
-        if(active)setBiometricAvailable(false);
-      }
-    })();
-    return()=>{active=false;dispose?.();};
+    void getBiometricAvailability().then(info=>{if(active)setBiometricAvailable(info.available)}).catch(()=>{if(active)setBiometricAvailable(false)});
+    return()=>{active=false};
   },[]);
 
   useEffect(()=>{
     let live=true;
     (async()=>{
       try{
-        if(await shouldGateNativeSession()){
-          try{await unlockNativeSession();}
-          catch{if(live)notify('Desbloqueio cancelado. Você também pode entrar com sua senha.');return;}
-        }
-        const s=await api.session();
-        if(live&&s.authenticated){setAuthenticated(true);await refresh();}
+        if(!(await hasStoredSession()))return;
+        const next=await api.bootstrap();
+        if(live){dataRef.current=next;setData(next);setAuthenticated(true);}
       }catch(e){
-        if(e instanceof ApiError&&e.status===0)notify('Sem conexão. O Ritmo abrirá quando o servidor estiver disponível.');
+        if(e instanceof ApiError&&(e.status===401||e.status===403))await clearLocalAuth();
       }finally{document.documentElement.classList.add('ritmo-ready');}
     })();
     return()=>{live=false};
-  },[refresh,notify]);
+  },[]);
 
   useEffect(()=>{
     if(!authenticated)return;
@@ -134,7 +160,7 @@ export default function App() {
     const onVisibility=()=>{if(document.visibilityState==='visible')void sync();};
     const onFocus=()=>void sync();
     const onOnline=()=>void sync();
-    const timer=window.setInterval(()=>void sync(),30000);
+    const timer=window.setInterval(()=>void sync(),90000);
 
     document.addEventListener('visibilitychange',onVisibility);
     window.addEventListener('focus',onFocus);
@@ -148,10 +174,6 @@ export default function App() {
     };
   },[authenticated,refresh,notify]);
 
-  useEffect(()=>{
-    if(!authenticated)return;
-    void syncNativeFinancialNotifications(data,profile).catch(()=>{});
-  },[authenticated,transactions,debts,goals,profile]);
 
   useEffect(()=>{
     if(!authenticated)return;
@@ -167,16 +189,16 @@ export default function App() {
   },[authenticated]);
 
   useEffect(()=>{
-    const open=Boolean(modal||sheetOpen);
+    const open=Boolean(modal);
     document.body.classList.toggle('mobile-overlay-open',open);
     return()=>document.body.classList.remove('mobile-overlay-open');
-  },[modal,sheetOpen]);
+  },[modal]);
 
   useEffect(()=>{
     document.body.classList.toggle('auth-active',!authenticated);
     const shell=document.getElementById('appShell');
     if(!authenticated){shell?.setAttribute('inert','');shell?.setAttribute('aria-hidden','true');}else{shell?.removeAttribute('inert');shell?.removeAttribute('aria-hidden');}
-    if(!authenticated){setModal(null);setSheetOpen(false);}
+    if(!authenticated){setModal(null);}
   },[authenticated]);
 
   useEffect(()=>{
@@ -330,7 +352,7 @@ export default function App() {
     if(t.id==='txDateFrom')setTxDateFrom(t.value);
     if(t.id==='txDateTo')setTxDateTo(t.value);
   };
-  const navigate=(page:string)=>{if(page in titles){setCurrentPage(page as Page);setModal(null);setSheetOpen(false);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}};
+  const navigate=(page:string)=>{if(page in titles){setCurrentPage(page as Page);setModal(null);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}};
 
   const handleAuthKeyDown=async(e:React.KeyboardEvent<HTMLElement>)=>{
     if(e.key!=='Enter'||loading)return;
