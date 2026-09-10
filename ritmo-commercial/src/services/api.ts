@@ -85,6 +85,7 @@ export const api = {
     const form = new FormData(); form.append('file', file);
     return request<{ id: string; name: string; contentType: string; size: number }>('/files', { method: 'POST', body: form });
   },
+  deleteFile: (id: string) => request<void>(`/files/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getFile: async (id: string) => {
     const headers = new Headers();
     const { sessionToken, deviceToken } = await getAuthTokens();
