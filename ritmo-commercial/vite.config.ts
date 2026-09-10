@@ -42,12 +42,6 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,webp,png,ico}'],
         runtimeCaching: [
           {
-            urlPattern: /\/api\/bootstrap(?:\?|$)/,
-            method: 'GET',
-            handler: 'NetworkFirst',
-            options: { cacheName: 'ritmo-bootstrap-offline', networkTimeoutSeconds: 5, expiration: { maxEntries: 3, maxAgeSeconds: 60 * 60 * 24 } }
-          },
-          {
             urlPattern: /\/api\/(transactions|debts|goals|events|profile)(?:\/|$)/,
             method: 'POST',
             handler: 'NetworkOnly',
