@@ -4,9 +4,17 @@ import { api, persistAuth } from './api';
 import { hasStoredSession, isNativeBiometricEnabled, setNativeBiometricEnabled } from './authStorage';
 
 let deferredInstallPrompt: any = null;
+const installListeners = new Set<() => void>();
+function emitInstallAvailability(){ for(const listener of installListeners) listener(); }
+
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
   deferredInstallPrompt = event;
+  emitInstallAvailability();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  emitInstallAvailability();
 });
 
 export function isNativeApp() { return Capacitor.isNativePlatform(); }
@@ -192,3 +200,7 @@ export async function installPWA() {
 }
 
 export function canInstallPWA() { return !isNativeApp() && Boolean(deferredInstallPrompt); }
+export function subscribePWAInstallAvailability(listener: () => void) {
+  installListeners.add(listener);
+  return () => installListeners.delete(listener);
+}
