@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ritmo-commercial-notify",
   "main": "index.js",
+  "workers_dev": false,
   "compatibility_date": "2026-09-10",
   "triggers": {
     "crons": ["15 11 * * *"]
