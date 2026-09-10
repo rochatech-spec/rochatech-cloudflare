@@ -497,6 +497,63 @@ async function handlePush(request:Request,env:Env,path:string){
   return null;
 }
 
+
+function bahiaDate(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const get=(type:string)=>parts.find(p=>p.type===type)?.value||'';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+async function sendScheduledPush(env:Env){
+  if(!env.CRON_SECRET) return {ok:false,delivered:0,reason:'cron-secret-missing'};
+  const date=bahiaDate();
+  const [txs,debts,goals,events]=await env.DB.batch([
+    env.DB.prepare("SELECT t.id,t.user_id AS userId,t.description AS title,t.type,t.value_cents AS valueCents FROM transactions t JOIN profiles p ON p.user_id=t.user_id WHERE t.status='pending' AND t.date=? AND p.due_notifications=1").bind(date),
+    env.DB.prepare("SELECT d.id,d.user_id AS userId,d.name AS title,d.remaining_cents AS valueCents FROM debts d JOIN profiles p ON p.user_id=d.user_id WHERE d.remaining_cents>0 AND d.due=? AND p.due_notifications=1").bind(date),
+    env.DB.prepare("SELECT g.id,g.user_id AS userId,g.name AS title,(g.target_cents-g.saved_cents) AS valueCents FROM goals g JOIN profiles p ON p.user_id=g.user_id WHERE g.saved_cents<g.target_cents AND g.due=? AND p.goal_notifications=1").bind(date),
+    env.DB.prepare("SELECT e.id,e.user_id AS userId,e.title,e.time FROM events e JOIN profiles p ON p.user_id=e.user_id WHERE e.date=? AND p.due_notifications=1").bind(date),
+  ]);
+  const moneyText=(centsValue:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Math.abs(Number(centsValue||0))/100);
+  const items:any[]=[
+    ...(txs.results as any[]).map(x=>({kind:'transaction',refId:x.id,userId:x.userId,title:x.type==='Receita'?'Recebimento previsto hoje':'Pagamento previsto hoje',body:`${x.title} • ${moneyText(x.valueCents)}`,url:'/?page=transactions'})),
+    ...(debts.results as any[]).map(x=>({kind:'debt',refId:x.id,userId:x.userId,title:'Conta vence hoje',body:`${x.title} • ${moneyText(x.valueCents)}`,url:'/?page=debts'})),
+    ...(goals.results as any[]).map(x=>({kind:'goal',refId:x.id,userId:x.userId,title:'Prazo de meta hoje',body:`${x.title} • faltam ${moneyText(x.valueCents)}`,url:'/?page=goals'})),
+    ...(events.results as any[]).map(x=>({kind:'event',refId:x.id,userId:x.userId,title:'Compromisso hoje',body:`${x.title}${x.time?` • ${x.time}`:''}`,url:'/?page=calendar'})),
+  ];
+  let delivered=0,skipped=0;
+  for(const item of items){
+    const already=await env.DB.prepare('SELECT 1 AS ok FROM notification_deliveries WHERE user_id=? AND kind=? AND ref_id=? AND notification_date=?').bind(item.userId,item.kind,item.refId,date).first();
+    if(already){skipped++;continue;}
+    const subs=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE user_id=?').bind(item.userId).all<any>();
+    let success=0;
+    for(const s of subs.results){
+      try{
+        await sendPushNotification(
+          {endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},
+          {title:item.title,body:item.body,url:item.url,tag:`ritmo-${item.kind}-${item.refId}-${date}`},
+          {publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY,subject:env.VAPID_SUBJECT}
+        );
+        success++;
+      }catch(e:any){
+        if(e?.statusCode===404||e?.statusCode===410) await env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(s.id).run();
+      }
+    }
+    if(success>0){
+      await env.DB.prepare('INSERT OR IGNORE INTO notification_deliveries(user_id,kind,ref_id,notification_date,delivered_at) VALUES(?,?,?,?,?)').bind(item.userId,item.kind,item.refId,date,now()).run();
+      delivered+=success;
+    }
+  }
+  await env.DB.prepare("DELETE FROM notification_deliveries WHERE notification_date < date('now','-45 day')").run();
+  return {ok:true,date,items:items.length,delivered,skipped};
+}
+
+async function handleScheduledPush(request:Request,env:Env,path:string){
+  if(path!=='/push/cron'||request.method!=='POST') return null;
+  const secret=request.headers.get('X-Ritmo-Cron-Secret')||'';
+  if(!env.CRON_SECRET||secret!==env.CRON_SECRET) return error('Não autorizado.',403,'FORBIDDEN');
+  return json(await sendScheduledPush(env));
+}
+
 async function handleFiles(request:Request,env:Env,path:string){
   const ctx=await requireAuth(request,env);
   if(path==='/files'&&request.method==='GET'){
@@ -548,7 +605,7 @@ export default {
     const headers=cors(request,env); if(request.method==='OPTIONS')return new Response(null,{status:204,headers}); const path=new URL(request.url).pathname.replace(/^\/api(?=\/)/,'');
     try{
       if(path==='/health' && request.method==='GET') return json({ok:true,service:'ritmo',storage:{filesKv:Boolean(env.FILES_KV)},time:now()},200,{...headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-      let r=await handleAuth(request,env,path); if(!r)r=await handlePasskeys(request,env,path); if(!r)r=await handlePush(request,env,path); if(!r)r=await handleFiles(request,env,path); if(!r)r=await runIdempotent(request,env,path,()=>handleData(request,env,path)); if(!r)r=error('Rota não encontrada.',404,'NOT_FOUND');
+      let r=await handleScheduledPush(request,env,path); if(!r)r=await handleAuth(request,env,path); if(!r)r=await handlePasskeys(request,env,path); if(!r)r=await handlePush(request,env,path); if(!r)r=await handleFiles(request,env,path); if(!r)r=await runIdempotent(request,env,path,()=>handleData(request,env,path)); if(!r)r=error('Rota não encontrada.',404,'NOT_FOUND');
       const h=new Headers(r.headers);for(const [k,v] of Object.entries(headers))h.set(k,v);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','no-referrer');return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
     }catch(e:any){
       const requestId=crypto.randomUUID();
