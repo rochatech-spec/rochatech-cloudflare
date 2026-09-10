@@ -1,5 +1,4 @@
 name: Ritmo Commercial • Android APK
-# final-rebuild: 2026-09-10-auth-centering-and-register
 
 on:
   push:
@@ -7,22 +6,21 @@ on:
     paths:
       - ".github/workflows/ritmo-commercial-android.yml"
       - "ritmo-commercial/src/**"
+      - "ritmo-commercial/src-tauri/**"
       - "ritmo-commercial/public/**"
       - "ritmo-commercial/scripts/**"
       - "ritmo-commercial/package.json"
       - "ritmo-commercial/vite.config.ts"
-      - "ritmo-commercial/capacitor.config.ts"
-      - "ritmo-commercial/android/**"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   android:
-    name: Capacitor Android + APK
+    name: Tauri 2 Android + APK
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: ritmo-commercial
@@ -36,58 +34,52 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
-      - name: Preparar Android SDK
-        run: yes | sdkmanager --licenses >/dev/null || true
+      - name: Preparar Rust e Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
       - name: Instalar dependências
         run: npm install --no-audit --no-fund
-      - name: Validar e compilar frontend do APK
+      - name: Validar Web, Worker e Tauri
         env:
           VITE_API_URL: https://ritmo-commercial.pages.dev/api
         run: |
           set -euo pipefail
           npm run check
           npm run build
-      - name: Criar projeto Capacitor Android
+          cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Inicializar Android Tauri
+        env:
+          CI: "true"
         run: |
           set -euo pipefail
-          if [ ! -d android ]; then
-            npx cap add android
-          fi
-          npx cap sync android
-          test -s android/gradlew
-          test -s android/app/build.gradle
-      - name: Versionar projeto Android nativo
-        shell: bash
-        working-directory: ${{ github.workspace }}
+          rm -rf src-tauri/gen/android
+          npm run tauri android init -- --ci
+          test -s src-tauri/gen/android/gradlew
+      - name: Compilar APK universal
+        env:
+          VITE_API_URL: https://ritmo-commercial.pages.dev/api
+          CI: "true"
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f ritmo-commercial/android
-          if ! git diff --cached --quiet; then
-            git commit -m "feat(ritmo-commercial): adicionar projeto Capacitor Android"
-            if [ "$GITHUB_REF_NAME" = "ritmo-commercial-bootstrap" ]; then
-              git push origin HEAD:ritmo-commercial-bootstrap
-            fi
-          fi
-      - name: Compilar APK debug instalável
-        run: |
-          set -euo pipefail
-          cd android
-          chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          grep -q '@aparajita/capacitor-biometric-auth' app/src/main/assets/capacitor.plugins.json
-          MERGED_MANIFEST="$(find app/build/intermediates -type f -name AndroidManifest.xml | grep -E 'merged_manifest|merged_manifests' | head -1 || true)"
-          test -n "$MERGED_MANIFEST"
-          grep -q 'android.permission.USE_BIOMETRIC' "$MERGED_MANIFEST"
-          cp app/build/outputs/apk/debug/app-debug.apk ../Ritmo-Android.apk
-          cd ..
+          npm run tauri android build -- --apk
+          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | grep -E 'universal.*release|release.*universal|release' | head -1)"
+          test -n "$APK"
+          test -s "$APK"
+          cp "$APK" Ritmo-Android.apk
           sha256sum Ritmo-Android.apk | tee Ritmo-Android.apk.sha256
+          test "$(stat -c%s Ritmo-Android.apk)" -gt 1000000
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ritmo-Android-APK
+          name: Ritmo-Android-APK-Tauri
           path: |
             ritmo-commercial/Ritmo-Android.apk
             ritmo-commercial/Ritmo-Android.apk.sha256
