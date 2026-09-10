@@ -1501,7 +1501,7 @@ export default function App() {
       
 
     </div>
-    <section aria-label='Acesso ao Ritmo' className='login-page reference-login' id='loginPage'>
+    <section aria-label='Acesso ao Ritmo' className='login-page reference-login' id='loginPage' onClick={handleClick} onInput={handleInput} onChange={handleInput}>
       
 
       <div className='login-blur-shape login-blur-a'></div>
@@ -1840,12 +1840,12 @@ export default function App() {
       
 
     </section>
-    <div id='modalBackdrop' className={`modal-backdrop ${modal ? "show" : ""}`.trim()}>
+    <div id='modalBackdrop' className={`modal-backdrop ${modal ? "show" : ""}`.trim()} onClick={handleClick} onInput={handleInput} onChange={handleInput}>
       <div className='modal liquid' id='modalBox'>
         {renderModal()}
       </div>
     </div>
-    <div id='sheetBackdrop' className={`sheet-backdrop ${sheetOpen ? "show" : ""}`.trim()}>
+    <div id='sheetBackdrop' className={`sheet-backdrop ${sheetOpen ? "show" : ""}`.trim()} onClick={handleClick} onInput={handleInput} onChange={handleInput}>
       <div className='modal liquid' id='sheetBox' style={{width: 'min(520px,100%)'} as React.CSSProperties}>
         <div className='modal-top'>
           <h3>
@@ -1908,7 +1908,7 @@ export default function App() {
       
 
     </button>
-    <div aria-hidden='true' id='fabMenu'>
+    <div aria-hidden='true' id='fabMenu' onClick={handleClick}>
       
 
       <button className='fab-action' data-action='new-transaction'>
