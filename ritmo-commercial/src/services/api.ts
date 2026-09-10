@@ -1,4 +1,4 @@
-import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction, AuthUser, StoredFile } from '../types';
+import type { Bootstrap, Debt, DebtPayment, EventItem, Goal, GoalContribution, Profile, Transaction, AuthUser, StoredFile } from '../types';
 import { clearSessionToken, getAuthTokens, isNativeApp, setDeviceToken as persistDeviceToken, setLastUsername, setSessionToken as persistSessionToken } from './authStorage';
 
 const API_URL = (import.meta.env.VITE_API_URL || (isNativeApp() ? 'https://ritmo-commercial.pages.dev/api' : '/api')).replace(/\/$/, '');
@@ -101,10 +101,14 @@ export const api = {
   updateDebt: (id: string, item: Partial<Omit<Debt,'id'|'remaining'>>) => request<Debt>(`/debts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
   deleteDebt: (id: string) => request<void>(`/debts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   payDebt: (id: string, value: number, date?: string) => request<Debt>(`/debts/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify({ value, date }) }),
+  updateDebtPayment: (debtId: string, paymentId: string, patch: Pick<DebtPayment,'value'|'date'>) => request<{payment:DebtPayment;debt:Debt}>(`/debts/${encodeURIComponent(debtId)}/payments/${encodeURIComponent(paymentId)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteDebtPayment: (debtId: string, paymentId: string) => request<{debt:Debt}>(`/debts/${encodeURIComponent(debtId)}/payments/${encodeURIComponent(paymentId)}`, { method: 'DELETE' }),
   createGoal: (item: Omit<Goal, 'id'>) => request<Goal>('/goals', { method: 'POST', body: JSON.stringify(item) }),
   updateGoal: (id: string, item: Partial<Omit<Goal,'id'|'saved'>>) => request<Goal>(`/goals/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
   deleteGoal: (id: string) => request<void>(`/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   addGoalValue: (id: string, value: number) => request<Goal>(`/goals/${encodeURIComponent(id)}/contributions`, { method: 'POST', body: JSON.stringify({ value }) }),
+  updateGoalContribution: (goalId: string, contributionId: string, value: number) => request<{contribution:GoalContribution;goal:Goal}>(`/goals/${encodeURIComponent(goalId)}/contributions/${encodeURIComponent(contributionId)}`, { method: 'PATCH', body: JSON.stringify({ value }) }),
+  deleteGoalContribution: (goalId: string, contributionId: string) => request<{goal:Goal}>(`/goals/${encodeURIComponent(goalId)}/contributions/${encodeURIComponent(contributionId)}`, { method: 'DELETE' }),
   createEvent: (item: Omit<EventItem, 'id'>) => request<EventItem>('/events', { method: 'POST', body: JSON.stringify(item) }),
   updateEvent: (id: string, item: Partial<Omit<EventItem,'id'>>) => request<EventItem>(`/events/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
   deleteEvent: (id: string) => request<void>(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
