@@ -25,30 +25,30 @@ jobs:
       - name: Solicitar código de dispositivo
         id: device
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node <<'NODE'
+          node --input-type=commonjs <<'NODE'
           const fs = require('fs');
-          const clientId = '54d11594-84e4-41aa-b438-e81b8fa78ee7';
-          const scope = 'account:read user:read workers:write workers_kv:write d1:write pages:write offline_access';
-          const body = new URLSearchParams({ client_id: clientId, scope });
-          const res = await fetch('https://dash.cloudflare.com/oauth2/device/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString(),
-          });
-          const text = await res.text();
-          if (!res.ok) throw new Error(`Device auth HTTP ${res.status}: ${text.slice(0,300)}`);
-          const d = JSON.parse(text);
-          if (!d.device_code || !d.user_code || !d.verification_uri) throw new Error('Resposta de device auth incompleta');
-          console.log(`::add-mask::${d.device_code}`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `device_code=${d.device_code}\ninterval=${d.interval || 5}\nexpires_in=${d.expires_in || 300}\n`);
-          console.log(`CLOUDFLARE_USER_CODE=${d.user_code}`);
-          console.log(`CLOUDFLARE_VERIFY_URL=${d.verification_uri}`);
-          if (d.verification_uri_complete) console.log(`CLOUDFLARE_DIRECT_URL=${d.verification_uri_complete}`);
-          console.log(`Código válido por até ${d.expires_in || 300} segundos.`);
+          (async () => {
+            const clientId = '54d11594-84e4-41aa-b438-e81b8fa78ee7';
+            const scope = 'account:read user:read workers:write workers_kv:write d1:write pages:write offline_access';
+            const body = new URLSearchParams({ client_id: clientId, scope });
+            const res = await fetch('https://dash.cloudflare.com/oauth2/device/auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: body.toString(),
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(`Device auth HTTP ${res.status}: ${text.slice(0,300)}`);
+            const d = JSON.parse(text);
+            if (!d.device_code || !d.user_code || !d.verification_uri) throw new Error('Resposta de device auth incompleta');
+            console.log(`::add-mask::${d.device_code}`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `device_code=${d.device_code}\ninterval=${d.interval || 5}\nexpires_in=${d.expires_in || 300}\n`);
+            console.log(`CLOUDFLARE_USER_CODE=${d.user_code}`);
+            console.log(`CLOUDFLARE_VERIFY_URL=${d.verification_uri}`);
+            if (d.verification_uri_complete) console.log(`CLOUDFLARE_DIRECT_URL=${d.verification_uri_complete}`);
+            console.log(`Código válido por até ${d.expires_in || 300} segundos.`);
+          })().catch((err) => { console.error(err); process.exit(1); });
           NODE
 
   deploy:
@@ -73,37 +73,39 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          node <<'NODE'
+          node --input-type=commonjs <<'NODE'
           const fs = require('fs');
-          const clientId = '54d11594-84e4-41aa-b438-e81b8fa78ee7';
-          const deviceCode = process.env.DEVICE_CODE;
-          let interval = Number(process.env.POLL_INTERVAL || 5);
-          const deadline = Date.now() + Number(process.env.EXPIRES_IN || 300) * 1000;
-          while (Date.now() < deadline) {
-            const body = new URLSearchParams({
-              grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-              device_code: deviceCode,
-              client_id: clientId,
-            });
-            const res = await fetch('https://dash.cloudflare.com/oauth2/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: body.toString(),
-            });
-            const text = await res.text();
-            let d = {};
-            try { d = JSON.parse(text); } catch {}
-            if (d.access_token) {
-              console.log(`::add-mask::${d.access_token}`);
-              fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_API_TOKEN=${d.access_token}\n`);
-              console.log('Cloudflare autorizado com sucesso.');
-              process.exit(0);
+          (async () => {
+            const clientId = '54d11594-84e4-41aa-b438-e81b8fa78ee7';
+            const deviceCode = process.env.DEVICE_CODE;
+            let interval = Number(process.env.POLL_INTERVAL || 5);
+            const deadline = Date.now() + Number(process.env.EXPIRES_IN || 300) * 1000;
+            while (Date.now() < deadline) {
+              const body = new URLSearchParams({
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+                device_code: deviceCode,
+                client_id: clientId,
+              });
+              const res = await fetch('https://dash.cloudflare.com/oauth2/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+              });
+              const text = await res.text();
+              let d = {};
+              try { d = JSON.parse(text); } catch {}
+              if (d.access_token) {
+                console.log(`::add-mask::${d.access_token}`);
+                fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_API_TOKEN=${d.access_token}\n`);
+                console.log('Cloudflare autorizado com sucesso.');
+                return;
+              }
+              if (d.error === 'access_denied' || d.error === 'expired_token') throw new Error(d.error);
+              if (d.error === 'slow_down') interval += 5;
+              await new Promise(r => setTimeout(r, interval * 1000));
             }
-            if (d.error === 'access_denied' || d.error === 'expired_token') throw new Error(d.error);
-            if (d.error === 'slow_down') interval += 5;
-            await new Promise(r => setTimeout(r, interval * 1000));
-          }
-          throw new Error('Autorização Cloudflare expirou');
+            throw new Error('Autorização Cloudflare expirou');
+          })().catch((err) => { console.error(err); process.exit(1); });
           NODE
 
       - name: Instalar dependências
