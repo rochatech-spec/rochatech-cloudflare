@@ -181,7 +181,7 @@ jobs:
           BASE='https://ritmo-commercial.pages.dev'
           READY=0
           for i in {1..30}; do
-            if curl -fsS "$BASE/api/health" | grep -q '"ok":true'; then
+            if curl -fsS "$BASE/api/health" | grep -q '"ok":true' && curl -fsS "$BASE/api/health" | grep -q '"filesKv":true'; then
               curl -fsS "$BASE/manifest.webmanifest" | grep -q 'standalone'
               READY=1
               break
