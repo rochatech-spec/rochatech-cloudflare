@@ -22,6 +22,10 @@
     {
       "binding": "SESSION_KV",
       "id": "__KV_NAMESPACE_ID__"
+    },
+    {
+      "binding": "FILES_KV",
+      "id": "__FILES_KV_NAMESPACE_ID__"
     }
   ]
 }
