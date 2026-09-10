@@ -164,7 +164,10 @@ jobs:
         run: npm run build
 
       - name: Publicar Pages + Functions
-        run: npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA" --config wrangler.deploy.jsonc
+        run: |
+          set -euo pipefail
+          cp wrangler.deploy.jsonc wrangler.jsonc
+          npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
 
       - name: Validar produção
         working-directory: ${{ github.workspace }}
