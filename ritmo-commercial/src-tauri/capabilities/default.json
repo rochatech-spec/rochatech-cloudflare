@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-default",
+  "description": "Permissões mínimas do Ritmo no Android/iOS",
+  "windows": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://ritmo-commercial.pages.dev/**" }
+      ]
+    },
+    "notification:default",
+    "geolocation:default",
+    "biometric:default",
+    "stronghold:default",
+    "stronghold:allow-remove-store-record"
+  ]
+}
