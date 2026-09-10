@@ -304,14 +304,14 @@ async function handlePasskeys(request:Request,env:Env,path:string){
 async function bootstrap(env:Env,userId:string){
   const [profile,tx,debts,goals,events,files]=await env.DB.batch([
     env.DB.prepare('SELECT u.username,u.display_name,p.theme,p.due_notifications,p.goal_notifications FROM users u JOIN profiles p ON p.user_id=u.id WHERE u.id=?').bind(userId),
-    env.DB.prepare('SELECT id,date,description AS desc,category AS cat,type,value_cents,icon FROM transactions WHERE user_id=? ORDER BY date DESC,created_at DESC').bind(userId),
+    env.DB.prepare('SELECT id,date,description AS desc,category AS cat,type,value_cents,status,posted_at AS postedAt,icon FROM transactions WHERE user_id=? ORDER BY date DESC,created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,name,total_cents,remaining_cents,due,category FROM debts WHERE user_id=? ORDER BY due').bind(userId),
     env.DB.prepare('SELECT id,name,target_cents,saved_cents,due FROM goals WHERE user_id=? ORDER BY created_at DESC').bind(userId),
     env.DB.prepare('SELECT id,title,date,time,note FROM events WHERE user_id=? ORDER BY date,time').bind(userId),
     env.DB.prepare('SELECT id,original_name AS name,content_type AS contentType,size,created_at AS createdAt FROM files WHERE user_id=? ORDER BY created_at DESC').bind(userId),
   ]);
   const pr:any=profile.results?.[0]||{};
-  return {profile:{displayName:pr.display_name||'',username:pr.username||'',theme:pr.theme||'system',dueNotifications:Boolean(pr.due_notifications),goalNotifications:Boolean(pr.goal_notifications)},transactions:(tx.results as any[]).map(x=>({...x,value:moneyNumber(x.value_cents),value_cents:undefined})),debts:(debts.results as any[]).map(x=>({...x,total:moneyNumber(x.total_cents),remaining:moneyNumber(x.remaining_cents),total_cents:undefined,remaining_cents:undefined})),goals:(goals.results as any[]).map(x=>({...x,target:moneyNumber(x.target_cents),saved:moneyNumber(x.saved_cents),target_cents:undefined,saved_cents:undefined})),events:events.results,files:files.results};
+  return {profile:{displayName:pr.display_name||'',username:pr.username||'',theme:pr.theme||'system',dueNotifications:Boolean(pr.due_notifications),goalNotifications:Boolean(pr.goal_notifications)},transactions:(tx.results as any[]).map(x=>({...x,status:x.status||'posted',postedAt:x.postedAt||undefined,value:moneyNumber(x.value_cents),value_cents:undefined})),debts:(debts.results as any[]).map(x=>({...x,total:moneyNumber(x.total_cents),remaining:moneyNumber(x.remaining_cents),total_cents:undefined,remaining_cents:undefined})),goals:(goals.results as any[]).map(x=>({...x,target:moneyNumber(x.target_cents),saved:moneyNumber(x.saved_cents),target_cents:undefined,saved_cents:undefined})),events:events.results,files:files.results};
 }
 
 async function handleData(request:Request,env:Env,path:string){
@@ -328,26 +328,84 @@ async function handleData(request:Request,env:Env,path:string){
     return json((await bootstrap(env,uid)).profile);
   }
   if(path==='/transactions'&&request.method==='POST'){
-    const b=await body<any>(request),id=uuid(),type=b.type==='Receita'?'Receita':'Despesa',value=Math.abs(cents(b.value)); if(!String(b.desc||'').trim()||!validDate(b.date)||!value) return error('Descrição, data e valor são obrigatórios.');
-    const signed=type==='Receita'?value:-value; await env.DB.prepare('INSERT INTO transactions(id,user_id,date,description,category,type,value_cents,icon,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id,uid,b.date,String(b.desc).trim().slice(0,120),String(b.cat||'Outros').trim().slice(0,60),type,signed,String(b.icon||'circle-dollar-sign'),ts,ts).run(); return json({id,date:b.date,desc:String(b.desc).trim(),cat:String(b.cat||'Outros').trim(),type,value:moneyNumber(signed),icon:b.icon||'circle-dollar-sign'},201);
+    const b=await body<any>(request),id=uuid(),type=b.type==='Receita'?'Receita':'Despesa',value=Math.abs(cents(b.value));
+    if(!String(b.desc||'').trim()||!validDate(b.date)||!value) return error('Descrição, data e valor são obrigatórios.');
+    const status=(b.status==='pending'||(b.status!=='posted'&&String(b.date)>ts.slice(0,10)))?'pending':'posted';
+    const postedAt=status==='posted'?ts:null;
+    const signed=type==='Receita'?value:-value;
+    await env.DB.prepare('INSERT INTO transactions(id,user_id,date,description,category,type,value_cents,status,posted_at,icon,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,uid,b.date,String(b.desc).trim().slice(0,120),String(b.cat||'Outros').trim().slice(0,60),type,signed,status,postedAt,String(b.icon||'circle-dollar-sign'),ts,ts).run();
+    return json({id,date:b.date,desc:String(b.desc).trim(),cat:String(b.cat||'Outros').trim(),type,value:moneyNumber(signed),status,postedAt:postedAt||undefined,icon:b.icon||'circle-dollar-sign'},201);
   }
-  const txm=path.match(/^\/transactions\/([^/]+)$/); if(txm&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM transactions WHERE id=? AND user_id=?').bind(txm[1],uid).run();return new Response(null,{status:204});}
+  const txPost=path.match(/^\/transactions\/([^/]+)\/post$/);
+  if(txPost&&request.method==='POST'){
+    const current=await env.DB.prepare('SELECT * FROM transactions WHERE id=? AND user_id=?').bind(txPost[1],uid).first<any>();
+    if(!current)return error('Movimentação não encontrada.',404,'NOT_FOUND');
+    await env.DB.prepare("UPDATE transactions SET status='posted',posted_at=?,updated_at=? WHERE id=? AND user_id=?").bind(ts,ts,current.id,uid).run();
+    return json({id:current.id,date:current.date,desc:current.description,cat:current.category,type:current.type,value:moneyNumber(current.value_cents),status:'posted',postedAt:ts,icon:current.icon||'circle-dollar-sign'});
+  }
+  const txm=path.match(/^\/transactions\/([^/]+)$/);
+  if(txm&&request.method==='PATCH'){
+    const current=await env.DB.prepare('SELECT * FROM transactions WHERE id=? AND user_id=?').bind(txm[1],uid).first<any>();
+    if(!current)return error('Movimentação não encontrada.',404,'NOT_FOUND');
+    const b=await body<any>(request);
+    const date=String(b.date??current.date),desc=String(b.desc??current.description).trim(),cat=String(b.cat??current.category).trim()||'Outros';
+    const type=b.type==='Receita'?'Receita':b.type==='Despesa'?'Despesa':current.type;
+    const absValue=Math.abs(cents(b.value??moneyNumber(Math.abs(current.value_cents))));
+    if(!desc||!validDate(date)||!absValue)return error('Descrição, data e valor são obrigatórios.');
+    const signed=type==='Receita'?absValue:-absValue;
+    const status=b.status==='pending'?'pending':b.status==='posted'?'posted':current.status||'posted';
+    const postedAt=status==='posted'?(current.posted_at||ts):null;
+    await env.DB.prepare('UPDATE transactions SET date=?,description=?,category=?,type=?,value_cents=?,status=?,posted_at=?,updated_at=? WHERE id=? AND user_id=?').bind(date,desc.slice(0,120),cat.slice(0,60),type,signed,status,postedAt,ts,current.id,uid).run();
+    return json({id:current.id,date,desc,cat,type,value:moneyNumber(signed),status,postedAt:postedAt||undefined,icon:current.icon||'circle-dollar-sign'});
+  }
+  if(txm&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM transactions WHERE id=? AND user_id=?').bind(txm[1],uid).run();return new Response(null,{status:204});}
   if(path==='/debts'&&request.method==='POST'){
     const b=await body<any>(request),id=uuid(),value=Math.abs(cents(b.total)); if(!String(b.name||'').trim()||!validDate(b.due)||!value)return error('Nome, valor e vencimento são obrigatórios.'); await env.DB.prepare('INSERT INTO debts(id,user_id,name,total_cents,remaining_cents,due,category,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(id,uid,String(b.name).trim().slice(0,120),value,value,b.due,String(b.category||'Compromisso').trim().slice(0,60),ts,ts).run(); return json({id,name:String(b.name).trim(),total:moneyNumber(value),remaining:moneyNumber(value),due:b.due,category:String(b.category||'Compromisso')},201);
   }
+  const debtItem=path.match(/^\/debts\/([^/]+)$/);
+  if(debtItem&&request.method==='PATCH'){
+    const current=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(debtItem[1],uid).first<any>();
+    if(!current)return error('Dívida não encontrada.',404,'NOT_FOUND');
+    const b=await body<any>(request),name=String(b.name??current.name).trim(),due=String(b.due??current.due),category=String(b.category??current.category).trim()||'Compromisso',total=Math.abs(cents(b.total??moneyNumber(current.total_cents)));
+    if(!name||!validDate(due)||!total)return error('Nome, valor e vencimento são obrigatórios.');
+    const alreadyPaid=Math.max(0,current.total_cents-current.remaining_cents),remaining=Math.max(0,total-alreadyPaid);
+    await env.DB.prepare('UPDATE debts SET name=?,total_cents=?,remaining_cents=?,due=?,category=?,updated_at=? WHERE id=? AND user_id=?').bind(name.slice(0,120),total,remaining,due,category.slice(0,60),ts,current.id,uid).run();
+    return json({id:current.id,name,total:moneyNumber(total),remaining:moneyNumber(remaining),due,category});
+  }
+  if(debtItem&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM debts WHERE id=? AND user_id=?').bind(debtItem[1],uid).run();return new Response(null,{status:204});}
   const pay=path.match(/^\/debts\/([^/]+)\/payments$/); if(pay&&request.method==='POST'){
     const b=await body<any>(request),value=Math.abs(cents(b.value)),d=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(pay[1],uid).first<any>(); if(!d||!value)return error('Dívida ou valor inválido.',404,'NOT_FOUND'); const rem=Math.max(0,d.remaining_cents-value); await env.DB.batch([env.DB.prepare('UPDATE debts SET remaining_cents=?,updated_at=? WHERE id=? AND user_id=?').bind(rem,ts,d.id,uid),env.DB.prepare('INSERT INTO debt_payments(id,debt_id,user_id,value_cents,paid_at,created_at) VALUES(?,?,?,?,?,?)').bind(uuid(),d.id,uid,Math.min(value,d.remaining_cents),String(validDate(b.date)?b.date:ts.slice(0,10)),ts)]); return json({id:d.id,name:d.name,total:moneyNumber(d.total_cents),remaining:moneyNumber(rem),due:d.due,category:d.category});
   }
   if(path==='/goals'&&request.method==='POST'){
     const b=await body<any>(request),target=Math.abs(cents(b.target)),id=uuid(); if(!String(b.name||'').trim()||!target||Boolean(b.due)&&!validDate(b.due))return error('Nome, valor e prazo da meta são inválidos.'); await env.DB.prepare('INSERT INTO goals(id,user_id,name,target_cents,saved_cents,due,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,uid,String(b.name).trim().slice(0,120),target,0,b.due||null,ts,ts).run(); return json({id,name:String(b.name).trim(),target:moneyNumber(target),saved:0,due:b.due||''},201);
   }
+  const goalItem=path.match(/^\/goals\/([^/]+)$/);
+  if(goalItem&&request.method==='PATCH'){
+    const current=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(goalItem[1],uid).first<any>();
+    if(!current)return error('Meta não encontrada.',404,'NOT_FOUND');
+    const b=await body<any>(request),name=String(b.name??current.name).trim(),due=String(b.due??current.due??''),target=Math.abs(cents(b.target??moneyNumber(current.target_cents)));
+    if(!name||!target||(due&&!validDate(due)))return error('Nome, valor e prazo da meta são inválidos.');
+    const saved=Math.min(current.saved_cents,target);
+    await env.DB.prepare('UPDATE goals SET name=?,target_cents=?,saved_cents=?,due=?,updated_at=? WHERE id=? AND user_id=?').bind(name.slice(0,120),target,saved,due||null,ts,current.id,uid).run();
+    return json({id:current.id,name,target:moneyNumber(target),saved:moneyNumber(saved),due});
+  }
+  if(goalItem&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM goals WHERE id=? AND user_id=?').bind(goalItem[1],uid).run();return new Response(null,{status:204});}
   const contrib=path.match(/^\/goals\/([^/]+)\/contributions$/); if(contrib&&request.method==='POST'){
     const b=await body<any>(request),value=Math.abs(cents(b.value)),g=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(contrib[1],uid).first<any>(); if(!g||!value)return error('Meta ou valor inválido.',404,'NOT_FOUND'); const saved=Math.min(g.target_cents,g.saved_cents+value); await env.DB.batch([env.DB.prepare('UPDATE goals SET saved_cents=?,updated_at=? WHERE id=? AND user_id=?').bind(saved,ts,g.id,uid),env.DB.prepare('INSERT INTO goal_contributions(id,goal_id,user_id,value_cents,created_at) VALUES(?,?,?,?,?)').bind(uuid(),g.id,uid,Math.min(value,g.target_cents-g.saved_cents),ts)]); return json({id:g.id,name:g.name,target:moneyNumber(g.target_cents),saved:moneyNumber(saved),due:g.due||''});
   }
   if(path==='/events'&&request.method==='POST'){
     const b=await body<any>(request),id=uuid();if(!String(b.title||'').trim()||!validDate(b.date)||!validTime(b.time))return error('Nome, data ou horário inválido.');await env.DB.prepare('INSERT INTO events(id,user_id,title,date,time,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,uid,String(b.title).trim().slice(0,120),b.date,b.time||null,String(b.note||'').slice(0,400),ts,ts).run();return json({id,title:String(b.title).trim(),date:b.date,time:b.time||'',note:String(b.note||'')},201);
   }
-  const ev=path.match(/^\/events\/([^/]+)$/);if(ev&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM events WHERE id=? AND user_id=?').bind(ev[1],uid).run();return new Response(null,{status:204});}
+  const ev=path.match(/^\/events\/([^/]+)$/);
+  if(ev&&request.method==='PATCH'){
+    const current=await env.DB.prepare('SELECT * FROM events WHERE id=? AND user_id=?').bind(ev[1],uid).first<any>();
+    if(!current)return error('Evento não encontrado.',404,'NOT_FOUND');
+    const b=await body<any>(request),title=String(b.title??current.title).trim(),date=String(b.date??current.date),time=String(b.time??current.time??''),note=String(b.note??current.note??'');
+    if(!title||!validDate(date)||!validTime(time))return error('Nome, data ou horário inválido.');
+    await env.DB.prepare('UPDATE events SET title=?,date=?,time=?,note=?,updated_at=? WHERE id=? AND user_id=?').bind(title.slice(0,120),date,time||null,note.slice(0,400),ts,current.id,uid).run();
+    return json({id:current.id,title,date,time,note});
+  }
+  if(ev&&request.method==='DELETE'){await env.DB.prepare('DELETE FROM events WHERE id=? AND user_id=?').bind(ev[1],uid).run();return new Response(null,{status:204});}
   return null;
 }
 
