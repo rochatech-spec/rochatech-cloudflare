@@ -406,8 +406,10 @@ async function handleData(request:Request,env:Env,path:string){
   const pay=path.match(/^\/debts\/([^/]+)\/payments$/); if(pay&&request.method==='POST'){
     const b=await body<any>(request),value=Math.abs(cents(b.value)),d=await env.DB.prepare('SELECT * FROM debts WHERE id=? AND user_id=?').bind(pay[1],uid).first<any>(); if(!d||!value)return error('Dívida ou valor inválido.',404,'NOT_FOUND');
     if(value>d.remaining_cents)return error('O pagamento não pode ser maior que o saldo em aberto.',409,'PAYMENT_EXCEEDS_REMAINING');
-    await env.DB.prepare('INSERT INTO debt_payments(id,debt_id,user_id,value_cents,paid_at,created_at) VALUES(?,?,?,?,?,?)').bind(uuid(),d.id,uid,value,String(validDate(b.date)?b.date:ts.slice(0,10)),ts).run();
-    return json(await recalcDebt(env,uid,d.id,ts));
+    const paymentId=uuid(),paidAt=String(validDate(b.date)?b.date:ts.slice(0,10));
+    await env.DB.prepare('INSERT INTO debt_payments(id,debt_id,user_id,value_cents,paid_at,created_at) VALUES(?,?,?,?,?,?)').bind(paymentId,d.id,uid,value,paidAt,ts).run();
+    const debt=await recalcDebt(env,uid,d.id,ts);
+    return json({payment:{id:paymentId,debtId:d.id,value:moneyNumber(value),date:paidAt,createdAt:ts},debt});
   }
   const paymentItem=path.match(/^\/debts\/([^/]+)\/payments\/([^/]+)$/);
   if(paymentItem&&request.method==='PATCH'){
@@ -447,8 +449,10 @@ async function handleData(request:Request,env:Env,path:string){
   const contrib=path.match(/^\/goals\/([^/]+)\/contributions$/); if(contrib&&request.method==='POST'){
     const b=await body<any>(request),value=Math.abs(cents(b.value)),g=await env.DB.prepare('SELECT * FROM goals WHERE id=? AND user_id=?').bind(contrib[1],uid).first<any>(); if(!g||!value)return error('Meta ou valor inválido.',404,'NOT_FOUND');
     if(value>Math.max(0,g.target_cents-g.saved_cents))return error('O aporte não pode ultrapassar o valor restante da meta.',409,'CONTRIBUTION_EXCEEDS_TARGET');
-    await env.DB.prepare('INSERT INTO goal_contributions(id,goal_id,user_id,value_cents,created_at) VALUES(?,?,?,?,?)').bind(uuid(),g.id,uid,value,ts).run();
-    return json(await recalcGoal(env,uid,g.id,ts));
+    const contributionId=uuid();
+    await env.DB.prepare('INSERT INTO goal_contributions(id,goal_id,user_id,value_cents,created_at) VALUES(?,?,?,?,?)').bind(contributionId,g.id,uid,value,ts).run();
+    const goal=await recalcGoal(env,uid,g.id,ts);
+    return json({contribution:{id:contributionId,goalId:g.id,value:moneyNumber(value),createdAt:ts},goal});
   }
   const contributionItem=path.match(/^\/goals\/([^/]+)\/contributions\/([^/]+)$/);
   if(contributionItem&&request.method==='PATCH'){
