@@ -180,6 +180,7 @@ jobs:
       - name: Publicar Worker de notificações
         run: |
           set -euo pipefail
+          # O notificator usa apenas Cron Trigger; workers_dev permanece desativado.
           npx wrangler deploy --config notify-worker/wrangler.jsonc
 
       - name: Validar produção
