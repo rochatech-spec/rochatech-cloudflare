@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import { browserSupportsWebAuthn, platformAuthenticatorIsAvailable, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { api, persistAuth } from './api';
 import { hasStoredSession, isNativeBiometricEnabled, setNativeBiometricEnabled } from './authStorage';
 
@@ -20,10 +20,38 @@ window.addEventListener('appinstalled', () => {
 export function isNativeApp() { return Capacitor.isNativePlatform(); }
 export function isBiometricsAvailable() { return isNativeApp() || browserSupportsWebAuthn(); }
 
+export async function getBiometricAvailability() {
+  if (isNativeApp()) {
+    const { BiometricAuth } = await import('@aparajita/capacitor-biometric-auth');
+    const info = await BiometricAuth.checkBiometry();
+    return {
+      available: Boolean(info.isAvailable),
+      strongAvailable: Boolean(info.strongBiometryIsAvailable),
+      reason: info.reason || '',
+      code: info.code || '',
+    };
+  }
+  if (!browserSupportsWebAuthn()) return { available:false, strongAvailable:false, reason:'WebAuthn indisponível.', code:'webauthnUnavailable' };
+  const available = await platformAuthenticatorIsAvailable().catch(() => false);
+  return { available, strongAvailable:available, reason:available?'':'Autenticador biométrico do aparelho indisponível.', code:available?'':'platformAuthenticatorUnavailable' };
+}
+
+export async function subscribeBiometricAvailability(listener: (available:boolean) => void) {
+  if (!isNativeApp()) return () => {};
+  const { BiometricAuth } = await import('@aparajita/capacitor-biometric-auth');
+  const initial = await BiometricAuth.checkBiometry();
+  listener(Boolean(initial.isAvailable));
+  const handle = await BiometricAuth.addResumeListener((info) => listener(Boolean(info.isAvailable)));
+  return () => { void handle.remove(); };
+}
+
 async function nativeBiometricPrompt(reason: string) {
   const { BiometricAuth, AndroidBiometryStrength } = await import('@aparajita/capacitor-biometric-auth');
   const availability = await BiometricAuth.checkBiometry();
-  if (!availability.isAvailable) throw new Error('Nenhuma biometria compatível está cadastrada neste aparelho.');
+  if (!availability.isAvailable) throw new Error(availability.reason || 'Nenhuma biometria compatível está cadastrada neste aparelho.');
+  const androidStrength = availability.strongBiometryIsAvailable
+    ? AndroidBiometryStrength.strong
+    : AndroidBiometryStrength.weak;
   await BiometricAuth.authenticate({
     reason,
     cancelTitle: 'Cancelar',
@@ -32,7 +60,7 @@ async function nativeBiometricPrompt(reason: string) {
     androidTitle: 'Ritmo',
     androidSubtitle: reason,
     androidConfirmationRequired: false,
-    androidBiometryStrength: AndroidBiometryStrength.strong,
+    androidBiometryStrength: androidStrength,
   });
 }
 
