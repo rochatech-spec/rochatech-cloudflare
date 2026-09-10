@@ -189,10 +189,7 @@ jobs:
           npx wrangler whoami --json > /tmp/whoami.json
       - name: Identificar conta
         id: account
-        run: |
-          set -euo pipefail
-          ACCOUNT_ID="$(node -e "const d=require('/tmp/whoami.json');const a=d.accounts?.[0];if(!a?.id)process.exit(2);process.stdout.write(a.id)")"
-          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+        run: echo "account_id=83fb94d06af817cd5715cd691bb23997" >> "$GITHUB_OUTPUT"
       - name: Criar ou reutilizar D1 e KV
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
