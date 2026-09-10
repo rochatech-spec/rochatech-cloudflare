@@ -14,7 +14,7 @@
     "db:local": "wrangler d1 execute ritmo-commercial-db --local --file=./schema.sql --config wrangler.jsonc",
     "db:remote": "wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.jsonc",
     "vapid": "node scripts/generate-vapid.mjs",
-    "android:build": "npm run build && tauri android build -- --apk",
+    "android:build": "npm run build && tauri android build -- --apk --debug",
     "worker:typecheck": "tsc -p tsconfig.worker.json",
     "check": "npm run check:static && tsc -b && npm run worker:typecheck && npm run worker:check",
     "prebuild": "node scripts/generate-icons.mjs",
