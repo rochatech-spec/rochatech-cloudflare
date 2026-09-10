@@ -1,6 +1,7 @@
 import { browserSupportsWebAuthn, platformAuthenticatorIsAvailable, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { api, persistAuth } from './api';
 import { hasStoredSession, isNativeApp, isNativeBiometricEnabled, setNativeBiometricEnabled } from './authStorage';
+import type { Bootstrap, Profile } from '../types';
 
 let deferredInstallPrompt: any = null;
 const installListeners = new Set<() => void>();
@@ -181,6 +182,93 @@ export async function scheduleNativeDueNotification(_id: number, title: string, 
   if (!granted) return false;
   sendNotification({ title, body, schedule: Schedule.at(at) });
   return true;
+}
+
+
+function notificationId(seed: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash % 2_000_000_000) || 1;
+}
+
+function reminderDate(date: string, hour = 8) {
+  const target = new Date(`${date}T${String(hour).padStart(2,'0')}:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  if (target.getTime() <= Date.now()) {
+    const today = new Date();
+    const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0,10);
+    if (date !== localToday) return null;
+    return new Date(Date.now() + 2 * 60 * 1000);
+  }
+  return target;
+}
+
+export async function syncNativeFinancialNotifications(data: Bootstrap, profile: Profile) {
+  if (!isNativeApp()) return { scheduled: 0 };
+  const enabled = Boolean(profile.dueNotifications || profile.goalNotifications);
+  if (!enabled) return { scheduled: 0 };
+
+  const reminders: Array<{ id:number; title:string; body:string; at:Date }> = [];
+  if (profile.dueNotifications) {
+    for (const tx of data.transactions) {
+      if (tx.status !== 'pending') continue;
+      const at = reminderDate(tx.date, 8);
+      if (!at) continue;
+      reminders.push({
+        id: notificationId(`tx:${tx.id}:${tx.date}`),
+        title: tx.value >= 0 ? 'Recebimento previsto hoje' : 'Pagamento previsto hoje',
+        body: `${tx.desc} • ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Math.abs(tx.value))}`,
+        at,
+      });
+    }
+    for (const debt of data.debts) {
+      if (debt.remaining <= 0) continue;
+      const at = reminderDate(debt.due, 8);
+      if (!at) continue;
+      reminders.push({
+        id: notificationId(`debt:${debt.id}:${debt.due}`),
+        title: 'Conta vence hoje',
+        body: `${debt.name} • ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(debt.remaining)}`,
+        at,
+      });
+    }
+  }
+  if (profile.goalNotifications) {
+    for (const goal of data.goals) {
+      if (!goal.due || goal.saved >= goal.target) continue;
+      const at = reminderDate(goal.due, 9);
+      if (!at) continue;
+      reminders.push({
+        id: notificationId(`goal:${goal.id}:${goal.due}`),
+        title: 'Prazo de meta hoje',
+        body: `${goal.name} • faltam ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Math.max(0,goal.target-goal.saved))}`,
+        at,
+      });
+    }
+  }
+
+  const signature = JSON.stringify(reminders.map(r => [r.id, r.at.getTime(), r.title, r.body]));
+  if (localStorage.getItem('ritmo.native-reminders.v2') === signature) {
+    return { scheduled: reminders.length };
+  }
+
+  const { cancelAll, sendNotification, Schedule, isPermissionGranted } = await import('@tauri-apps/plugin-notification');
+  if (!(await isPermissionGranted())) return { scheduled: 0 };
+  await cancelAll();
+  for (const reminder of reminders) {
+    sendNotification({
+      id: reminder.id,
+      title: reminder.title,
+      body: reminder.body,
+      schedule: Schedule.at(reminder.at, false, true),
+      autoCancel: true,
+    });
+  }
+  localStorage.setItem('ritmo.native-reminders.v2', signature);
+  return { scheduled: reminders.length };
 }
 
 export async function installPWA() {
