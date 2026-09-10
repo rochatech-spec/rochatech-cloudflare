@@ -2,7 +2,7 @@ name: Ritmo Commercial • PWA + Android
 
 on:
   push:
-    branches: [main, ritmo-commercial-bootstrap, ritmo-functional-hotfix-20260910]
+    branches: [main, ritmo-commercial-bootstrap, ritmo-functional-hotfix-20260910, ritmo-finalize-20260910]
     paths:
       - "ritmo-commercial/**"
       - ".github/workflows/ritmo-commercial.yml"
