@@ -1,8 +1,7 @@
-import { Capacitor } from '@capacitor/core';
 import type { Bootstrap, Debt, EventItem, Goal, Profile, Transaction, AuthUser, StoredFile } from '../types';
-import { clearSessionToken, getAuthTokens, setDeviceToken as persistDeviceToken, setLastUsername, setSessionToken as persistSessionToken } from './authStorage';
+import { clearSessionToken, getAuthTokens, isNativeApp, setDeviceToken as persistDeviceToken, setLastUsername, setSessionToken as persistSessionToken } from './authStorage';
 
-const API_URL = (import.meta.env.VITE_API_URL || (Capacitor.isNativePlatform() ? 'https://ritmo-commercial.pages.dev/api' : '/api')).replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || (isNativeApp() ? 'https://ritmo-commercial.pages.dev/api' : '/api')).replace(/\/$/, '');
 
 export class ApiError extends Error {
   status: number;
@@ -17,6 +16,14 @@ export async function setDeviceToken(token?: string) { await persistDeviceToken(
 export async function setSessionToken(token?: string) { await persistSessionToken(token); }
 export async function clearLocalAuth() { await clearSessionToken(); }
 
+async function platformFetch(url: string, init: RequestInit = {}) {
+  if (isNativeApp()) {
+    const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+    return tauriFetch(url, init);
+  }
+  return fetch(url, init);
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
@@ -29,7 +36,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (deviceToken) headers.set('X-Device-Token', deviceToken);
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, { ...init, headers, cache: 'no-store' });
+    response = await platformFetch(`${API_URL}${path}`, { ...init, headers, cache: 'no-store' });
   } catch (error) {
     throw new ApiError('Sem conexão com o servidor. Seus dados poderão ser sincronizados quando a conexão voltar.', 0, 'NETWORK_ERROR', error);
   }
@@ -86,13 +93,20 @@ export const api = {
   passkeyRegistrationVerify: (credential: unknown) => request<{ verified: boolean }>('/auth/passkeys/register/verify', { method: 'POST', body: JSON.stringify(credential) }),
   passkeyAuthenticationOptions: (username: string) => request<any>('/auth/passkeys/login/options', { method: 'POST', body: JSON.stringify({ username }) }),
   passkeyAuthenticationVerify: (body: { username: string; credential: unknown }) => request<AuthResponse>('/auth/passkeys/login/verify', { method: 'POST', body: JSON.stringify(body) }),
-  createTransaction: (item: Omit<Transaction, 'id'>) => request<Transaction>('/transactions', { method: 'POST', body: JSON.stringify(item) }),
+  createTransaction: (item: Omit<Transaction, 'id'|'postedAt'>) => request<Transaction>('/transactions', { method: 'POST', body: JSON.stringify(item) }),
+  updateTransaction: (id: string, item: Partial<Omit<Transaction,'id'|'postedAt'>>) => request<Transaction>(`/transactions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
+  postTransaction: (id: string) => request<Transaction>(`/transactions/${encodeURIComponent(id)}/post`, { method: 'POST' }),
   deleteTransaction: (id: string) => request<void>(`/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   createDebt: (item: Omit<Debt, 'id'>) => request<Debt>('/debts', { method: 'POST', body: JSON.stringify(item) }),
+  updateDebt: (id: string, item: Partial<Omit<Debt,'id'|'remaining'>>) => request<Debt>(`/debts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
+  deleteDebt: (id: string) => request<void>(`/debts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   payDebt: (id: string, value: number, date?: string) => request<Debt>(`/debts/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify({ value, date }) }),
   createGoal: (item: Omit<Goal, 'id'>) => request<Goal>('/goals', { method: 'POST', body: JSON.stringify(item) }),
+  updateGoal: (id: string, item: Partial<Omit<Goal,'id'|'saved'>>) => request<Goal>(`/goals/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
+  deleteGoal: (id: string) => request<void>(`/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   addGoalValue: (id: string, value: number) => request<Goal>(`/goals/${encodeURIComponent(id)}/contributions`, { method: 'POST', body: JSON.stringify({ value }) }),
   createEvent: (item: Omit<EventItem, 'id'>) => request<EventItem>('/events', { method: 'POST', body: JSON.stringify(item) }),
+  updateEvent: (id: string, item: Partial<Omit<EventItem,'id'>>) => request<EventItem>(`/events/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(item) }),
   deleteEvent: (id: string) => request<void>(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getVapidKey: () => request<{ publicKey: string }>('/push/vapid-public-key'),
   savePushSubscription: (subscription: PushSubscriptionJSON) => request<{ ok: true }>('/push/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
@@ -109,7 +123,7 @@ export const api = {
     if (sessionToken) headers.set('Authorization', `Bearer ${sessionToken}`);
     if (deviceToken) headers.set('X-Device-Token', deviceToken);
     let r: Response;
-    try { r = await fetch(`${API_URL}/files/${encodeURIComponent(id)}`, { headers, cache: 'no-store' }); }
+    try { r = await platformFetch(`${API_URL}/files/${encodeURIComponent(id)}`, { headers, cache: 'no-store' }); }
     catch (error) { throw new ApiError('Sem conexão com o servidor.', 0, 'NETWORK_ERROR', error); }
     if (!r.ok) throw new ApiError('Não foi possível baixar o arquivo.', r.status);
     return r.blob();
