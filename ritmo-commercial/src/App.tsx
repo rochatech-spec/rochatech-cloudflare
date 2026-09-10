@@ -1081,16 +1081,7 @@ export default function App() {
             <i data-lucide='log-out'></i>
             <span className='sidebar-label'>Sair</span>
           </button>
-          <div className='sidebar-bottom liquid-soft'>
-            <div className='sidebar-bottom-copy'>
-              <strong>
-                Mais que finanças.
-              </strong>
-              <small>
-                Um futuro real, organizado para suas escolhas.
-              </small>
-            </div>
-          </div>
+
           
 
         </aside>
@@ -1123,9 +1114,6 @@ export default function App() {
               </button>
               <button className='premium-btn btn-glass icon-btn' id='notifyBtn'>
                 <i data-lucide='bell'></i>
-              </button>
-              <button className='premium-btn btn-glass desktop-logout-btn' data-action='logout' title='Sair do Ritmo' aria-label='Sair'>
-                <i data-lucide='log-out'></i>
               </button>
               <button className='premium-btn btn-glass' data-go='profile' style={{height: '44px', padding: '0 10px 0 5px'} as React.CSSProperties}>
                 <span className='avatar' id='accountAvatar'>
