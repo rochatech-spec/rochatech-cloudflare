@@ -190,7 +190,7 @@ jobs:
       - name: Identificar conta
         id: account
         run: echo "account_id=83fb94d06af817cd5715cd691bb23997" >> "$GITHUB_OUTPUT"
-      - name: Criar ou reutilizar D1 e KV
+      - name: Criar ou reutilizar D1 e KVs
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.account.outputs.account_id }}
         run: |
@@ -209,12 +209,19 @@ jobs:
             KV_ID="$(grep -Eo '[0-9a-f]{32}' /tmp/kv-create.txt | head -1)"
           fi
           test -n "$KV_ID"
-          node - "$DB_ID" "$KV_ID" <<'NODE'
+          FILES_KV_ID="$(node -e "const fs=require('fs');let s=fs.readFileSync('/tmp/kv.json','utf8');let a;try{a=JSON.parse(s)}catch{const p=s.indexOf('['),q=s.lastIndexOf(']');a=JSON.parse(s.slice(p,q+1))}const d=a.find(x=>x.title==='ritmo-commercial-files'||x.name==='ritmo-commercial-files');if(d)process.stdout.write(d.id||'')")"
+          if [ -z "$FILES_KV_ID" ]; then
+            npx wrangler kv namespace create ritmo-commercial-files --config wrangler.bootstrap.jsonc > /tmp/files-kv-create.txt 2>&1
+            FILES_KV_ID="$(grep -Eo '[0-9a-f]{32}' /tmp/files-kv-create.txt | head -1)"
+          fi
+          test -n "$FILES_KV_ID"
+          node - "$DB_ID" "$KV_ID" "$FILES_KV_ID" <<'NODE'
           const fs=require('fs');
-          const [db,kv]=process.argv.slice(2);
+          const [db,kv,filesKv]=process.argv.slice(2);
           const src=fs.readFileSync('wrangler.jsonc','utf8')
             .replace('__D1_DATABASE_ID__',db)
-            .replace('__KV_NAMESPACE_ID__',kv);
+            .replace('__KV_NAMESPACE_ID__',kv)
+            .replace('__FILES_KV_NAMESPACE_ID__',filesKv);
           fs.writeFileSync('wrangler.deploy.jsonc',src);
           NODE
           npx wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.deploy.jsonc
