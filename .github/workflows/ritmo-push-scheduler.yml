@@ -1,6 +1,10 @@
 name: Ritmo Commercial • Push Scheduler
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ritmo-push-scheduler.yml"
   schedule:
     - cron: "15 11 * * *"
   workflow_dispatch:
