@@ -143,6 +143,8 @@ jobs:
           const [db,kv,filesKv]=process.argv.slice(2);
           fs.writeFileSync('wrangler.deploy.jsonc',fs.readFileSync('wrangler.jsonc','utf8').replace('__D1_DATABASE_ID__',db).replace('__KV_NAMESPACE_ID__',kv).replace('__FILES_KV_NAMESPACE_ID__',filesKv));
           NODE
+          npx wrangler d1 execute ritmo-commercial-db --remote --command="ALTER TABLE transactions ADD COLUMN status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('pending','posted'))" --config wrangler.deploy.jsonc || true
+          npx wrangler d1 execute ritmo-commercial-db --remote --command="ALTER TABLE transactions ADD COLUMN posted_at TEXT" --config wrangler.deploy.jsonc || true
           npx wrangler d1 execute ritmo-commercial-db --remote --file=./schema.sql --config wrangler.deploy.jsonc
 
       - name: Garantir Pages e segredos
@@ -174,6 +176,11 @@ jobs:
           set -euo pipefail
           cp wrangler.deploy.jsonc wrangler.jsonc
           npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
+
+      - name: Publicar Worker de notificações
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config notify-worker/wrangler.jsonc
 
       - name: Validar produção
         run: |
