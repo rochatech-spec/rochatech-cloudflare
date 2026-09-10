@@ -346,6 +346,15 @@ export default {
       if(path==='/health' && request.method==='GET') return json({ok:true,service:'ritmo',time:now()},200,{...headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       let r=await handleAuth(request,env,path); if(!r)r=await handlePasskeys(request,env,path); if(!r)r=await handlePush(request,env,path); if(!r)r=await handleFiles(request,env,path); if(!r)r=await runIdempotent(request,env,path,()=>handleData(request,env,path)); if(!r)r=error('Rota não encontrada.',404,'NOT_FOUND');
       const h=new Headers(r.headers);for(const [k,v] of Object.entries(headers))h.set(k,v);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','no-referrer');return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
-    }catch(e:any){console.error(e);const status=Number(e?.status)||500,code=e?.code||'INTERNAL_ERROR';const r=error(status===500?'Erro interno do servidor.':e.message,status,code);const h=new Headers(r.headers);for(const [k,v] of Object.entries(headers))h.set(k,v);return new Response(r.body,{status:r.status,headers:h});}
+    }catch(e:any){
+      const requestId=crypto.randomUUID();
+      console.error('[ritmo]',requestId,e);
+      const status=Number(e?.status)||500;
+      const code=typeof e?.code==='string'&&e.code ? e.code : 'INTERNAL_ERROR';
+      const message=status===500?'Erro interno do servidor.':String(e?.message||'Falha na requisição.');
+      const r=json({message,code,requestId},status);
+      const h=new Headers(r.headers);for(const [k,v] of Object.entries(headers))h.set(k,v);h.set('X-Request-Id',requestId);
+      return new Response(r.body,{status:r.status,headers:h});
+    }
   }
 } satisfies ExportedHandler<Env>;
