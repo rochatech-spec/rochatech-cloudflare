@@ -140,11 +140,12 @@ jobs:
           rm -rf src-tauri/gen/android
           npm run tauri android init -- --ci
           npm run tauri icon public/pwa-512.png
-          npm run tauri android build -- --apk
-          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | grep -E 'universal.*release|release.*universal|release' | head -1)"
+          npm run tauri android build -- --apk --debug
+          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | grep -E 'universal.*debug|debug.*universal|debug' | head -1)"
           test -n "$APK"
           test -s "$APK"
           cp "$APK" Ritmo-Android.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs Ritmo-Android.apk
           sha256sum Ritmo-Android.apk > Ritmo-Android.apk.sha256
       - name: Publicar APK do workflow
         uses: actions/upload-artifact@v4
