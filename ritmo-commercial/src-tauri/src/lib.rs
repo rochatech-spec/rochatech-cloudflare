@@ -21,7 +21,7 @@ pub fn run() {
 
             #[cfg(mobile)]
             app.handle()
-                .plugin(tauri_plugin_biometric::Builder::new().build())?;
+                .plugin(tauri_plugin_biometric::init())?;
 
             Ok(())
         })
