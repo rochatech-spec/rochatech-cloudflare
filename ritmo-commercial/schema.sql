@@ -170,3 +170,9 @@ CREATE TABLE IF NOT EXISTS notification_deliveries (
   PRIMARY KEY(user_id,kind,ref_id,notification_date)
 );
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_date ON notification_deliveries(notification_date);
+
+
+CREATE TABLE IF NOT EXISTS notification_runs (
+  run_key TEXT PRIMARY KEY,
+  started_at TEXT NOT NULL
+);
