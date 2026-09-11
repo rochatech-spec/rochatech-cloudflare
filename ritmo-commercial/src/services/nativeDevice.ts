@@ -2,6 +2,8 @@ import { browserSupportsWebAuthn, platformAuthenticatorIsAvailable, startAuthent
 import { api, persistAuth } from './api';
 
 let deferredInstallPrompt: any = null;
+const BIOMETRIC_ENABLED_KEY = 'ritmo.biometric.enabled.v1';
+const BIOMETRIC_REGISTERED_KEY = 'ritmo.biometric.registered.v1';
 const installListeners = new Set<() => void>();
 function emitInstallAvailability(){ for (const listener of installListeners) listener(); }
 
@@ -34,11 +36,35 @@ export async function getBiometricAvailability() {
   };
 }
 
+export function isBiometricLoginEnabled() {
+  try { return localStorage.getItem(BIOMETRIC_ENABLED_KEY) === '1'; } catch { return false; }
+}
+
+export function setBiometricLoginEnabled(enabled: boolean) {
+  try {
+    if (enabled) localStorage.setItem(BIOMETRIC_ENABLED_KEY, '1');
+    else localStorage.removeItem(BIOMETRIC_ENABLED_KEY);
+  } catch {}
+}
+
+function isBiometricCredentialRegistered() {
+  try { return localStorage.getItem(BIOMETRIC_REGISTERED_KEY) === '1'; } catch { return false; }
+}
+
 export async function registerBiometrics() {
   if (!browserSupportsWebAuthn()) throw new Error('Biometria não é suportada neste navegador.');
+  if (isBiometricCredentialRegistered()) {
+    setBiometricLoginEnabled(true);
+    return { verified:true };
+  }
   const optionsJSON = await api.passkeyRegistrationOptions();
   const credential = await startRegistration({ optionsJSON });
-  return api.passkeyRegistrationVerify(credential);
+  const result = await api.passkeyRegistrationVerify(credential);
+  if (result.verified) {
+    try { localStorage.setItem(BIOMETRIC_REGISTERED_KEY, '1'); } catch {}
+    setBiometricLoginEnabled(true);
+  }
+  return result;
 }
 
 export async function loginWithBiometrics(username: string) {
@@ -59,6 +85,16 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+export async function getPushNotificationState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return Boolean(await reg.pushManager.getSubscription());
+  } catch {
+    return false;
+  }
+}
+
 export async function enablePushNotifications() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Notificações não são suportadas neste aparelho.');
   const permission = await Notification.requestPermission();
@@ -72,6 +108,16 @@ export async function enablePushNotifications() {
   });
   await api.savePushSubscription(subscription.toJSON());
   return subscription;
+}
+
+export async function disablePushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return true;
+  const reg = await navigator.serviceWorker.ready;
+  const subscription = await reg.pushManager.getSubscription();
+  if (!subscription) return true;
+  try { await api.removePushSubscription(subscription.endpoint); } catch {}
+  await subscription.unsubscribe();
+  return true;
 }
 
 export async function installPWA() {
