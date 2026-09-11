@@ -1,5 +1,5 @@
 name: Ritmo Commercial • Cloudflare Device Node Deploy
-# final-kv-sync-auto-user-immutable-deploy: 2026-09-10-v4
+# library-advanced-pwa-deploy: 2026-09-10-v1
 
 on:
   push:
@@ -168,14 +168,26 @@ jobs:
             printf '%s' "$VAPID_PRIVATE_KEY" | npx wrangler pages secret put VAPID_PRIVATE_KEY --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
           fi
 
-      - name: Build de produção
-        run: npm run build
+      - name: Preparar PWA avançado da Biblioteca
+        run: |
+          set -euo pipefail
+          rm -rf advanced-dist /tmp/ritmo-pwa-advanced
+          mkdir -p advanced-dist /tmp/ritmo-pwa-advanced
+          unzip -q deploy/Ritmo-PWA-Avancado.zip -d /tmp/ritmo-pwa-advanced
+          SRC="$(find /tmp/ritmo-pwa-advanced -type f -name index.html -printf '%h\n' | head -1)"
+          test -n "$SRC"
+          cp -a "$SRC"/. advanced-dist/
+          test -s advanced-dist/index.html
+          test -s advanced-dist/manifest.webmanifest
+          test -s advanced-dist/sw.js
+          grep -q 'Ritmo' advanced-dist/index.html
+          grep -q '"standalone"' advanced-dist/manifest.webmanifest
 
-      - name: Publicar Pages + Functions
+      - name: Publicar PWA avançado + Functions
         run: |
           set -euo pipefail
           cp wrangler.deploy.jsonc wrangler.jsonc
-          npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
+          npx wrangler pages deploy advanced-dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
 
 
       - name: Validar produção
