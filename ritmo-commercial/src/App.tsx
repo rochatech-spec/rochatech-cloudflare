@@ -10,6 +10,7 @@ import {
 import { api, ApiError, clearLocalAuth, persistAuth, type AuthResponse } from './services/api';
 import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, loginWithBiometrics, registerBiometrics, subscribePWAInstallAvailability } from './services/nativeDevice';
 import { getRememberedUsername, hasStoredSession, isRememberUserEnabled, setRememberedUsername as saveRememberedUsername } from './services/authStorage';
+import { initializeDeviceCapabilities } from './services/deviceCapabilities';
 import type { Bootstrap, Debt, DebtPayment, EventItem, Goal, GoalContribution, Profile, Transaction } from './types';
 
 type Page = 'home'|'transactions'|'debts'|'calendar'|'goals'|'reports'|'profile'|'settings';
@@ -53,13 +54,22 @@ export default function App() {
   const [rememberLogin,setRememberLogin]=useState(()=>isRememberUserEnabled());
   const [rememberedUsername,setRememberedLoginUser]=useState(()=>getRememberedUsername());
   const [desktopViewport,setDesktopViewport]=useState(()=>window.matchMedia('(min-width:1024px)').matches);
-  const biometricPresentation=useMemo(()=>{
+  const devicePlatform=useMemo(()=>{
+    const nav=navigator as Navigator & {userAgentData?:{platform?:string;mobile?:boolean}};
     const ua=navigator.userAgent||'';
-    const isiPhone=/iPhone/i.test(ua);
-    return isiPhone
-      ? {icon:'scan-face',loginLabel:'Entrar com Face ID',settingsLabel:'Face ID'}
-      : {icon:'fingerprint',loginLabel:'Entrar com biometria',settingsLabel:'Biometria'};
+    const reported=(nav.userAgentData?.platform||navigator.platform||'').toLowerCase();
+    const ipadAsMac=reported.includes('mac')&&navigator.maxTouchPoints>1;
+    if(/iphone|ipad|ipod/i.test(ua)||ipadAsMac)return 'ios' as const;
+    if(/android/i.test(ua)||reported.includes('android'))return 'android' as const;
+    if(/windows/i.test(ua)||reported.includes('win'))return 'windows' as const;
+    if(/macintosh|mac os x/i.test(ua)||reported.includes('mac'))return 'macos' as const;
+    return 'other' as const;
   },[]);
+  const biometricPresentation=useMemo(()=>({
+    icon:devicePlatform==='ios'?'scan-face':devicePlatform==='android'?'fingerprint':devicePlatform==='windows'?'shield-check':devicePlatform==='macos'?'fingerprint':'key-round',
+    loginLabel:'Entrar com biometria',
+    settingsLabel:'Biometria'
+  }),[devicePlatform]);
   const [recoveryCode,setRecoveryCode]=useState('');
   const [generatedUsername,setGeneratedUsername]=useState('');
   const [syncing,setSyncing]=useState(false);
@@ -118,6 +128,10 @@ export default function App() {
   },[refresh,rememberLogin]);
 
   useEffect(()=>subscribePWAInstallAvailability(() => setPwaInstallReady(canInstallPWA())),[]);
+  useEffect(()=>{
+    const dispose=initializeDeviceCapabilities();
+    return dispose;
+  },[]);
   useEffect(()=>{
     const media=window.matchMedia('(min-width:1024px)');
     const sync=()=>setDesktopViewport(media.matches);
