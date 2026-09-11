@@ -4721,3 +4721,81 @@ html[data-motion="reduced"] :where(
     border-radius:22px!important;
   }
 }
+
+
+/* RITMO • MOBILE DOCK TRUE CENTER 2026-09-10 */
+@media(max-width:1023px){
+  .bottom-nav{
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    position:fixed!important;
+    left:50%!important;
+    right:auto!important;
+    bottom:max(8px,env(safe-area-inset-bottom))!important;
+    width:calc(100dvw - 20px)!important;
+    max-width:680px!important;
+    min-width:0!important;
+    height:64px!important;
+    margin:0!important;
+    padding:6px 7px!important;
+    box-sizing:border-box!important;
+    transform:translate3d(-50%,0,0)!important;
+    border-radius:20px!important;
+    overflow:hidden!important;
+    z-index:120!important;
+  }
+
+  .bottom-nav button{
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    height:100%!important;
+    margin:0!important;
+    padding:4px 2px!important;
+    box-sizing:border-box!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:center!important;
+    justify-content:center!important;
+    gap:3px!important;
+    border-radius:14px!important;
+    overflow:hidden!important;
+  }
+
+  .bottom-nav button span{
+    display:block!important;
+    width:100%!important;
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    text-align:center!important;
+  }
+
+  .bottom-nav button svg{
+    flex:0 0 auto!important;
+    width:19px!important;
+    height:19px!important;
+  }
+
+  .bottom-nav button.active{
+    transform:none!important;
+  }
+}
+
+@media(max-width:380px){
+  .bottom-nav{
+    width:calc(100dvw - 16px)!important;
+    height:62px!important;
+    padding:5px!important;
+    border-radius:19px!important;
+  }
+  .bottom-nav button{
+    font-size:7px!important;
+    padding-inline:1px!important;
+  }
+  .bottom-nav button svg{
+    width:18px!important;
+    height:18px!important;
+  }
+}
