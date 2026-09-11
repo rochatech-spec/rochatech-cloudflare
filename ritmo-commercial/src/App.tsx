@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createIcons, ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, AtSign, Bell, BellOff, BellRing,
   CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, ChartNoAxesCombined, ChevronDown, ChevronLeft,
-  ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, House, KeyRound,
+  ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, Fingerprint, House, KeyRound,
   Landmark, Layers3, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
   RotateCcw, ScanFace, Search, Settings2, ShieldCheck, Smartphone, SunMoon, Target, TriangleAlert, User,
   UserPlus, UserRound, Wallet, WalletCards, X
@@ -34,7 +34,7 @@ const initials=(name:string)=>{const p=String(name||'R').trim().split(/\s+/).fil
 const icons = {
   ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, AtSign, Bell, BellOff, BellRing,
   CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, ChartNoAxesCombined, ChevronDown, ChevronLeft,
-  ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, House, KeyRound,
+  ChevronRight, CircleCheckBig, CircleDollarSign, Copy, CreditCard, Download, Ellipsis, Eye, Fingerprint, House, KeyRound,
   Landmark, Layers3, Lock, LockKeyhole, LogOut, Menu, PanelLeftClose, Pencil, PiggyBank, Plus, ReceiptText, RefreshCw,
   RotateCcw, ScanFace, Search, Settings2, ShieldCheck, Smartphone, SunMoon, Target, TriangleAlert, User,
   UserPlus, UserRound, Wallet, WalletCards, X
@@ -53,6 +53,13 @@ export default function App() {
   const [rememberLogin,setRememberLogin]=useState(()=>isRememberUserEnabled());
   const [rememberedUsername,setRememberedLoginUser]=useState(()=>getRememberedUsername());
   const [desktopViewport,setDesktopViewport]=useState(()=>window.matchMedia('(min-width:1024px)').matches);
+  const biometricPresentation=useMemo(()=>{
+    const ua=navigator.userAgent||'';
+    const isiPhone=/iPhone/i.test(ua);
+    return isiPhone
+      ? {icon:'scan-face',loginLabel:'Entrar com Face ID',settingsLabel:'Face ID'}
+      : {icon:'fingerprint',loginLabel:'Entrar com biometria',settingsLabel:'Biometria'};
+  },[]);
   const [recoveryCode,setRecoveryCode]=useState('');
   const [generatedUsername,setGeneratedUsername]=useState('');
   const [syncing,setSyncing]=useState(false);
@@ -974,7 +981,7 @@ export default function App() {
     if(modal.kind==='edit-goal-contribution')return shell('Editar aporte',<div className="modal-form">{input('goalAddValue','Valor','text',{inputMode:'decimal'})}<button className="premium-btn btn-primary" id="saveGoalContributionEdit" style={{height:48}}>Salvar alterações</button></div>);
     if(modal.kind==='edit-profile')return shell('Editar perfil',<div className="modal-form"><div className="immutable-username-box"><span>Nome de usuário</span><strong>@{profile.username||'usuario'}</strong><small><i data-lucide="lock-keyhole"></i> Permanente. O nome de usuário não pode ser alterado.</small></div>{input('profileDisplayName','Nome de exibição')}<button className="premium-btn btn-primary" id="saveProfile" style={{height:48}}>Salvar alterações</button></div>);
     if(modal.kind==='change-password')return shell('Alterar senha',<div className="modal-form">{input('currentPass','Senha atual','password',{autoComplete:'current-password'})}{input('newPass','Nova senha','password',{autoComplete:'new-password'})}{input('newPass2','Confirmar nova senha','password',{autoComplete:'new-password'})}<button className="premium-btn btn-primary" id="savePassword" style={{height:48}}>Atualizar senha</button></div>);
-    if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{biometricAvailable&&!desktopViewport&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide="scan-face"></i>Ativar biometria neste aparelho</button>}</div>);
+    if(modal.kind==='recovery-code')return shell('Código de recuperação',<div className="modal-form"><div className="recovery-purpose"><strong>Este código tem duas funções</strong><span>Recuperar a senha e autorizar um aparelho novo. O código atual continua válido até você gerar outro.</span></div>{input('recoveryCurrentPass','Confirme sua senha atual','password',{autoComplete:'current-password'})}<button className="premium-btn btn-primary" id="generateNewRecovery" style={{height:48}}>Gerar novo código</button>{biometricAvailable&&!desktopViewport&&<button className="premium-btn btn-glass" id="enableBiometrics" style={{height:46}}><i data-lucide={biometricPresentation.icon}></i>Ativar {biometricPresentation.settingsLabel}</button>}</div>);
     if(modal.kind==='new-recovery-code')return shell('Novo código de recuperação',<div className="modal-form"><div className="recovery-code-box"><span>Seu novo código</span><code id="modalRecoveryCode">{recoveryCode}</code></div><div className="recovery-note"><i data-lucide="shield-check"></i><span>Anote ou copie agora. O código anterior deixou de funcionar.</span></div><button className="premium-btn btn-primary" id="copyModalRecovery" style={{height:48}}>Copiar código</button></div>);
     if(modal.kind==='notifications'){
       const base=new Date(todayISO()+'T00:00:00');
@@ -2122,7 +2129,10 @@ export default function App() {
                   <h3><i data-lucide='shield-check'></i>Segurança</h3>
                   {biometricAvailable&&!desktopViewport&&(
                     <div className='setting-row'>
-                      <div><strong>Biometria</strong><small>Entrar sem digitar o usuário</small></div>
+                      <div className='biometric-setting-copy'>
+                        <span className='biometric-setting-icon' aria-hidden='true'><i data-lucide={biometricPresentation.icon}></i></span>
+                        <div><strong>{biometricPresentation.settingsLabel}</strong><small>Entrar sem digitar o usuário</small></div>
+                      </div>
                       <button className='premium-btn btn-glass compact-action' id='enableBiometrics'>Ativar</button>
                     </div>
                   )}
@@ -2314,8 +2324,8 @@ export default function App() {
             </button>
             {biometricAvailable && !desktopViewport && (
               <button className='premium-btn btn-glass biometric-login-btn' id='biometricLogin' type='button'>
-                <i data-lucide='scan-face'></i>
-                Entrar com biometria
+                <span className='biometric-login-icon' aria-hidden='true'><i data-lucide={biometricPresentation.icon}></i></span>
+                <span>{biometricPresentation.loginLabel}</span>
               </button>
             )}
             
