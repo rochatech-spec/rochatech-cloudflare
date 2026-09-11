@@ -15,7 +15,7 @@ import type { Bootstrap, Debt, DebtPayment, EventItem, Goal, GoalContribution, P
 
 type Page = 'home'|'transactions'|'debts'|'calendar'|'goals'|'reports'|'profile'|'settings';
 type AuthView = 'login'|'register'|'code'|'recover'|'device';
-type ModalKind = 'new-transaction'|'edit-transaction'|'new-goal'|'edit-goal'|'new-event'|'edit-event'|'new-debt'|'edit-debt'|'debt-payment'|'debt-history'|'edit-debt-payment'|'goal-add'|'goal-history'|'edit-goal-contribution'|'edit-profile'|'change-password'|'recovery-code'|'new-recovery-code'|'search'|'notifications'|null;
+type ModalKind = 'new-transaction'|'edit-transaction'|'new-goal'|'edit-goal'|'new-event'|'edit-event'|'new-debt'|'edit-debt'|'debt-payment'|'debt-history'|'edit-debt-payment'|'goal-add'|'goal-history'|'edit-goal-contribution'|'edit-profile'|'change-password'|'recovery-code'|'new-recovery-code'|'notifications'|null;
 type ModalState = { kind: ModalKind; id?: string } | null;
 type FormState = Record<string,string>;
 
@@ -485,8 +485,6 @@ export default function App() {
     const el=e.target as HTMLElement;
     const go=el.closest<HTMLElement>('[data-go]');
     if(go){navigate(go.dataset.go||'home');return;}
-    const sg=el.closest<HTMLElement>('[data-search-go]');
-    if(sg){navigate(sg.dataset.searchGo||'home');return;}
     const cal=el.closest<HTMLElement>('[data-cal-date]');
     if(cal){setSelectedDate(new Date(`${cal.dataset.calDate}T12:00:00`));return;}
     const button=el.closest<HTMLButtonElement>('button');
@@ -625,8 +623,6 @@ export default function App() {
       }
       case 'sidebarToggle':document.body.classList.toggle('sidebar-collapsed');return;
       case 'syncNowBtn':await manualRefresh();return;
-      case 'searchBtn':
-      case 'mobileSearch':setModal({kind:'search'});resetForm({globalSearch:''});return;
       case 'notifyBtn':
       case 'mobileNotify':setModal({kind:'notifications'});return;
     }
@@ -1046,7 +1042,6 @@ export default function App() {
       ].map(i=>({...i,days:daysUntil(i.date)})).filter(i=>i.days>=0&&i.days<=7).sort((a,b)=>a.days-b.days||a.title.localeCompare(b.title));
       return shell('Notificações',<div className="modal-form"><div className="notification-system-row"><div><strong>Notificações do sistema</strong><small>Receber alertas fora do Ritmo</small></div><button className={`switch ios-switch ${pushEnabled?'on':''}`.trim()} data-setting="push" aria-label="Notificações do sistema" aria-pressed={pushEnabled}></button></div>{items.length?<div className="list">{items.map(i=><button className="row" data-go={i.page} key={i.id}><div className="row-icon"><i data-lucide={i.icon}></i></div><div className="row-main"><strong>{i.title}</strong><small>{i.detail}</small></div></button>)}</div>:<div dangerouslySetInnerHTML={{__html:empty('bell-off','Nenhum alerta nos próximos 7 dias','Quando houver valores, metas ou compromissos próximos, eles aparecerão aqui.')}}/>}</div>);
     }
-    if(modal.kind==='search'){const q=(form.globalSearch||'').toLowerCase(),items=[...Object.entries(titles).map(([p,n])=>({n,p:p as Page})),...transactions.map(x=>({n:x.desc,p:'transactions' as Page})),...debts.map(x=>({n:x.name,p:'debts' as Page})),...goals.map(x=>({n:x.name,p:'goals' as Page}))].filter(i=>!q||i.n.toLowerCase().includes(q)).slice(0,8);return shell('Buscar no Ritmo',<div className="modal-form">{input('globalSearch','Tela, movimentação, dívida ou meta')}<div className="list" id="searchResults">{items.length?items.map((i,k)=><button className="row" data-search-go={i.p} key={`${i.p}-${i.n}-${k}`}><div className="row-main"><strong>{i.n}</strong><small>{titles[i.p]}</small></div><i data-lucide="chevron-right"></i></button>):<div dangerouslySetInnerHTML={{__html:empty('search','Nada encontrado','Tente outro termo.')}}/>}</div></div>);}
     return null;
   }
 
@@ -1168,9 +1163,6 @@ export default function App() {
               <button aria-label='Atualizar dados' className={`premium-btn btn-glass icon-btn sync-btn ${syncing ? "syncing" : ""}`.trim()} disabled={syncing} id='syncNowBtn' title='Atualizar e sincronizar'>
                 <i data-lucide='refresh-cw'></i>
               </button>
-              <button className='premium-btn btn-glass icon-btn' id='searchBtn'>
-                <i data-lucide='search'></i>
-              </button>
               <button className='premium-btn btn-glass icon-btn' id='notifyBtn'>
                 <i data-lucide='bell'></i>
               </button>
@@ -1194,9 +1186,6 @@ export default function App() {
               <img alt='Ritmo' className='brand-logo' data-ritmo-logo='' src='/ritmo-logo.webp' />
             </div>
             <div className='mobile-header-actions'>
-              <button aria-label='Buscar' className='premium-btn btn-glass icon-btn' id='mobileSearch'>
-                <i data-lucide='search'></i>
-              </button>
               <button aria-label='Notificações' className='premium-btn btn-glass icon-btn' id='mobileNotify'>
                 <i data-lucide='bell'></i>
               </button>
