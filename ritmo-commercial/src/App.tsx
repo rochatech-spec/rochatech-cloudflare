@@ -2114,7 +2114,7 @@ export default function App() {
                     </button>
                     <button className='theme-choice' data-theme-choice='dark'>
                       <div className='theme-preview theme-preview-dark'></div>
-                      <span>Black 75%</span>
+                      <span>Escuro</span>
                     </button>
                     <button className='theme-choice' data-theme-choice='system'>
                       <div className='theme-preview theme-preview-system'></div>
