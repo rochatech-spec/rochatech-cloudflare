@@ -493,6 +493,12 @@ async function handlePush(request:Request,env:Env,path:string){
   if(path==='/push/subscribe'&&request.method==='POST'){
     const ctx=await requireAuth(request,env),b=await body<any>(request);if(!b.endpoint||!b.keys?.p256dh||!b.keys?.auth)return error('Assinatura push inválida.');const ts=now();await env.DB.prepare('INSERT INTO push_subscriptions(id,user_id,endpoint,p256dh,auth,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth,updated_at=excluded.updated_at').bind(uuid(),ctx.user.id,b.endpoint,b.keys.p256dh,b.keys.auth,ts,ts).run();return json({ok:true});
   }
+  if(path==='/push/unsubscribe'&&request.method==='POST'){
+    const ctx=await requireAuth(request,env),b=await body<any>(request),endpoint=String(b.endpoint||'').trim();
+    if(!endpoint)return error('Assinatura push inválida.');
+    await env.DB.prepare('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint=?').bind(ctx.user.id,endpoint).run();
+    return json({ok:true});
+  }
   if(path==='/push/test'&&request.method==='POST'){
     const ctx=await requireAuth(request,env),rows=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE user_id=?').bind(ctx.user.id).all<any>();let delivered=0;
     for(const s of rows.results){try{await sendPushNotification({endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},{title:'Ritmo',body:'Notificações ativadas com sucesso.',url:'/',tag:'ritmo-notification'},{publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY,subject:env.VAPID_SUBJECT});delivered++;}catch(e:any){if(e?.statusCode===404||e?.statusCode===410)await env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(s.id).run();}}
