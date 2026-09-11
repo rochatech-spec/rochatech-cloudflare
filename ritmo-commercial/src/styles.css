@@ -4488,3 +4488,236 @@ html[data-theme="dark"] [style*="color:#B57C25"]{
     transition:none!important;
   }
 }
+
+
+/* RITMO • PREMIUM LOGIN + SILENT DEVICE MOTION 2026-09-10 */
+.reference-login{
+  position:relative!important;
+  overflow:hidden!important;
+  background:
+    radial-gradient(circle at 14% 12%,rgba(78,181,194,.14),transparent 26%),
+    radial-gradient(circle at 88% 16%,rgba(106,146,205,.12),transparent 24%),
+    linear-gradient(180deg,#F8FAFC 0%,#F1F5F8 100%)!important;
+}
+html[data-theme="dark"] .reference-login{
+  background:
+    radial-gradient(circle at 15% 10%,rgba(55,184,166,.08),transparent 27%),
+    radial-gradient(circle at 87% 12%,rgba(71,118,180,.10),transparent 25%),
+    linear-gradient(180deg,#111720 0%,#0B1017 100%)!important;
+}
+.login-blur-shape{
+  opacity:.34!important;
+  filter:blur(52px)!important;
+}
+html[data-theme="dark"] .login-blur-shape{
+  opacity:.15!important;
+}
+
+.reference-login-shell{
+  width:min(1180px,100%)!important;
+  min-height:100dvh!important;
+  margin-inline:auto!important;
+  padding:42px clamp(22px,4vw,64px)!important;
+  grid-template-columns:minmax(0,1fr) minmax(360px,430px)!important;
+  gap:clamp(42px,6vw,86px)!important;
+  align-items:center!important;
+}
+.reference-login-brand{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  padding:0!important;
+}
+.reference-logo-hero .brand-logo{
+  width:min(420px,82%)!important;
+  max-height:128px!important;
+}
+
+.reference-login-card{
+  width:100%!important;
+  max-width:430px!important;
+  padding:28px!important;
+  border-radius:28px!important;
+  background:rgba(255,255,255,.88)!important;
+  border:1px solid rgba(32,52,73,.075)!important;
+  box-shadow:
+    0 22px 56px rgba(31,51,71,.12),
+    0 2px 8px rgba(31,51,71,.035),
+    inset 0 1px 0 rgba(255,255,255,.88)!important;
+  backdrop-filter:blur(17px) saturate(120%)!important;
+  -webkit-backdrop-filter:blur(17px) saturate(120%)!important;
+}
+html[data-theme="dark"] .reference-login-card{
+  background:rgba(24,31,41,.90)!important;
+  border-color:rgba(255,255,255,.095)!important;
+  box-shadow:
+    0 24px 62px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(255,255,255,.055)!important;
+}
+
+.reference-login-card h2{
+  font-size:24px!important;
+  letter-spacing:-.035em!important;
+  line-height:1.08!important;
+  margin-bottom:7px!important;
+}
+.reference-login-card .caption{
+  font-size:11px!important;
+  line-height:1.45!important;
+  margin-bottom:20px!important;
+}
+.reference-field-label{
+  margin-top:10px!important;
+  margin-bottom:6px!important;
+  font-size:10px!important;
+  font-weight:690!important;
+  color:var(--muted)!important;
+}
+.reference-field{
+  min-height:50px!important;
+  border-radius:15px!important;
+  padding-inline:13px!important;
+}
+.reference-field>svg,
+.reference-field>i svg{
+  width:18px!important;
+  height:18px!important;
+}
+.reference-field input{
+  font-size:13px!important;
+}
+.reference-login-button{
+  min-height:50px!important;
+  margin-top:14px!important;
+  border-radius:15px!important;
+  box-shadow:0 9px 24px rgba(20,157,141,.18)!important;
+}
+.reference-login-links{
+  margin-top:16px!important;
+}
+.reference-login-links .text-link{
+  font-size:10px!important;
+}
+
+.biometric-login-btn{
+  width:100%!important;
+  min-height:48px!important;
+  margin-top:9px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:9px!important;
+  border-radius:15px!important;
+  font-size:11px!important;
+  font-weight:720!important;
+}
+.biometric-login-icon{
+  width:26px!important;
+  height:26px!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:10px!important;
+  background:color-mix(in srgb,var(--emerald) 10%,transparent)!important;
+  color:var(--emerald)!important;
+}
+.biometric-login-icon svg{
+  width:18px!important;
+  height:18px!important;
+  stroke-width:2.05!important;
+}
+.biometric-setting-copy{
+  min-width:0!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:9px!important;
+}
+.biometric-setting-icon{
+  width:30px!important;
+  height:30px!important;
+  flex:0 0 30px!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:10px!important;
+  color:var(--emerald)!important;
+  background:color-mix(in srgb,var(--emerald) 10%,transparent)!important;
+}
+.biometric-setting-icon svg{
+  width:17px!important;
+  height:17px!important;
+}
+
+:where(button,[role="button"],a,input,select,textarea){
+  -webkit-tap-highlight-color:transparent;
+}
+:where(button,[role="button"],a){
+  touch-action:manipulation;
+}
+
+html[data-refresh="high"][data-motion="full"]{
+  --motion-fast:110ms;
+  --motion-base:150ms;
+}
+html[data-refresh="medium"][data-motion="full"]{
+  --motion-fast:125ms;
+  --motion-base:165ms;
+}
+html[data-refresh="standard"][data-motion="full"]{
+  --motion-fast:140ms;
+  --motion-base:180ms;
+}
+:where(
+  .premium-btn,.nav-item,.bottom-nav button,.fab-action,.kpi,.goal,
+  .section-card,.setting-card,.home-quick,.remember-check,.theme-choice
+){
+  transition-duration:var(--motion-base,180ms)!important;
+  transition-timing-function:cubic-bezier(.2,.72,.22,1)!important;
+}
+:where(.modal-backdrop,#modalBox,#fabMenu,.bottom-nav,.mobile-header){
+  transform:translateZ(0);
+  backface-visibility:hidden;
+}
+
+html[data-motion="reduced"] :where(
+  .premium-btn,.nav-item,.bottom-nav button,.fab-action,.kpi,.goal,
+  .section-card,.setting-card,.home-quick,.remember-check,.theme-choice
+){
+  transition-duration:1ms!important;
+}
+
+@media(max-width:1023px){
+  .reference-login-shell{
+    display:flex!important;
+    min-height:100dvh!important;
+    padding:
+      max(20px,env(safe-area-inset-top))
+      16px
+      max(20px,env(safe-area-inset-bottom))!important;
+    align-items:center!important;
+    justify-content:center!important;
+  }
+  .reference-login-brand{
+    display:none!important;
+  }
+  .reference-login-card{
+    width:min(100%,410px)!important;
+    max-width:410px!important;
+    padding:22px 18px!important;
+    border-radius:24px!important;
+  }
+  .reference-login-card h2{
+    font-size:22px!important;
+  }
+  .reference-field{
+    min-height:48px!important;
+  }
+}
+
+@media(max-width:380px){
+  .reference-login-shell{
+    padding-inline:12px!important;
+  }
+  .reference-login-card{
+    padding:19px 15px!important;
+    border-radius:22px!important;
+  }
+}
