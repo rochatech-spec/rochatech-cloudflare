@@ -4799,3 +4799,143 @@ html[data-motion="reduced"] :where(
     height:18px!important;
   }
 }
+
+
+/* RITMO • COMPACT INNER PILLS + IOS SWITCH FINAL 2026-09-10 */
+.premium-lite-settings .setting-row{
+  min-height:48px!important;
+  padding:7px 9px!important;
+  margin-top:6px!important;
+  border-radius:12px!important;
+  gap:10px!important;
+}
+.premium-lite-settings .setting-row strong{
+  font-size:10.5px!important;
+  line-height:1.18!important;
+}
+.premium-lite-settings .setting-row small{
+  margin-top:2px!important;
+  font-size:8.5px!important;
+  line-height:1.28!important;
+}
+.premium-lite-settings .icon-btn{
+  width:32px!important;
+  height:32px!important;
+  min-width:32px!important;
+  border-radius:11px!important;
+}
+.biometric-setting-icon{
+  width:28px!important;
+  height:28px!important;
+  flex-basis:28px!important;
+  border-radius:9px!important;
+}
+.biometric-setting-icon svg{
+  width:16px!important;
+  height:16px!important;
+}
+
+.switch.ios-switch{
+  position:relative!important;
+  width:40px!important;
+  min-width:40px!important;
+  height:23px!important;
+  padding:2px!important;
+  border:0!important;
+  border-radius:999px!important;
+  background:rgba(112,122,137,.24)!important;
+  box-shadow:inset 0 0 0 1px rgba(35,50,68,.045)!important;
+  overflow:hidden!important;
+  cursor:pointer!important;
+  transition:
+    background var(--motion-fast,140ms) ease,
+    box-shadow var(--motion-fast,140ms) ease!important;
+}
+.switch.ios-switch::after{
+  content:""!important;
+  display:block!important;
+  width:19px!important;
+  height:19px!important;
+  border-radius:50%!important;
+  background:#FFF!important;
+  box-shadow:0 2px 5px rgba(20,32,46,.22)!important;
+  transform:translateX(0)!important;
+  transition:transform var(--motion-base,180ms) cubic-bezier(.2,.78,.22,1)!important;
+}
+.switch.ios-switch.on{
+  background:#2ABB9F!important;
+  box-shadow:none!important;
+}
+.switch.ios-switch.on::after{
+  transform:translateX(17px)!important;
+}
+html[data-theme="dark"] .switch.ios-switch{
+  background:rgba(255,255,255,.18)!important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.035)!important;
+}
+html[data-theme="dark"] .switch.ios-switch.on{
+  background:#38C8AE!important;
+}
+
+.status,
+.status-chip{
+  min-height:0!important;
+  padding:3px 7px!important;
+  border-radius:999px!important;
+  font-size:8px!important;
+  line-height:1.15!important;
+  font-weight:700!important;
+  letter-spacing:.005em!important;
+}
+.seg{
+  padding:3px!important;
+  gap:2px!important;
+  border-radius:12px!important;
+}
+.seg button{
+  min-height:30px!important;
+  padding:5px 8px!important;
+  border-radius:9px!important;
+  font-size:9px!important;
+}
+
+@media(max-width:1023px){
+  .premium-lite-settings .setting-card{
+    padding:12px!important;
+  }
+  .premium-lite-settings .setting-row{
+    min-height:46px!important;
+    padding:6px 8px!important;
+    border-radius:11px!important;
+  }
+  .premium-lite-settings .setting-row strong{
+    font-size:10px!important;
+  }
+  .premium-lite-settings .setting-row small{
+    font-size:8px!important;
+  }
+  .premium-lite-settings .setting-card h3{
+    margin-bottom:9px!important;
+  }
+  .mobile-header-actions{
+    margin-left:auto!important;
+  }
+}
+
+@media(max-width:380px){
+  .premium-lite-settings .setting-row{
+    min-height:44px!important;
+  }
+  .switch.ios-switch{
+    width:38px!important;
+    min-width:38px!important;
+    height:22px!important;
+  }
+  .switch.ios-switch::after{
+    width:18px!important;
+    height:18px!important;
+  }
+  .switch.ios-switch.on::after{
+    transform:translateX(16px)!important;
+  }
+}
