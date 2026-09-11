@@ -8,7 +8,7 @@ import {
   UserPlus, UserRound, Wallet, WalletCards, X
 } from 'lucide';
 import { api, ApiError, clearLocalAuth, persistAuth, type AuthResponse } from './services/api';
-import { canInstallPWA, enablePushNotifications, getBiometricAvailability, installPWA, loginWithBiometrics, registerBiometrics, subscribePWAInstallAvailability } from './services/nativeDevice';
+import { canInstallPWA, disablePushNotifications, enablePushNotifications, getBiometricAvailability, getPushNotificationState, installPWA, isBiometricLoginEnabled, loginWithBiometrics, registerBiometrics, setBiometricLoginEnabled, subscribePWAInstallAvailability } from './services/nativeDevice';
 import { getRememberedUsername, hasStoredSession, isRememberUserEnabled, setRememberedUsername as saveRememberedUsername } from './services/authStorage';
 import { initializeDeviceCapabilities } from './services/deviceCapabilities';
 import type { Bootstrap, Debt, DebtPayment, EventItem, Goal, GoalContribution, Profile, Transaction } from './types';
@@ -51,6 +51,8 @@ export default function App() {
   const [loading,setLoading]=useState(false);
   const [pwaInstallReady,setPwaInstallReady]=useState(()=>canInstallPWA());
   const [biometricAvailable,setBiometricAvailable]=useState(()=>{try{return sessionStorage.getItem('ritmo.biometric.available')==='1'}catch{return false}});
+  const [biometricEnabled,setBiometricEnabled]=useState(()=>isBiometricLoginEnabled());
+  const [pushEnabled,setPushEnabled]=useState(false);
   const [rememberLogin,setRememberLogin]=useState(()=>isRememberUserEnabled());
   const [rememberedUsername,setRememberedLoginUser]=useState(()=>getRememberedUsername());
   const [desktopViewport,setDesktopViewport]=useState(()=>window.matchMedia('(min-width:1024px)').matches);
@@ -143,6 +145,7 @@ export default function App() {
   useEffect(()=>{
     let active=true;
     void getBiometricAvailability().then(info=>{if(active)setBiometricAvailable(info.available)}).catch(()=>{if(active)setBiometricAvailable(false)});
+    void getPushNotificationState().then(enabled=>{if(active)setPushEnabled(enabled)}).catch(()=>{if(active)setPushEnabled(false)});
     return()=>{active=false};
   },[]);
 
@@ -513,18 +516,74 @@ export default function App() {
 
     if(button.classList.contains('switch')){
       const key=button.dataset.setting;
-      const patch=key==='due'?{dueNotifications:!profile.dueNotifications}:{goalNotifications:!profile.goalNotifications};
-      const snapshot=dataRef.current;
-      const next={...snapshot,profile:{...snapshot.profile,...patch}};
-      dataRef.current=next;setData(next);
-      try{
-        const p=await api.saveProfile(patch);
-        const settled={...dataRef.current,profile:p};dataRef.current=settled;setData(settled);
-      }catch(e){
-        dataRef.current=snapshot;setData(snapshot);
-        notify(e instanceof ApiError?e.message:'Não foi possível salvar a preferência.');
+
+      if(key==='push'){
+        if(loading)return;
+        if(pushEnabled){
+          setPushEnabled(false);
+          try{
+            await busy(()=>disablePushNotifications());
+          }catch{
+            setPushEnabled(true);
+          }
+        }else{
+          setPushEnabled(true);
+          try{
+            await busy(async()=>{
+              await enablePushNotifications();
+              await api.sendTestPush().catch(()=>({delivered:0}));
+            });
+          }catch{
+            setPushEnabled(false);
+          }
+        }
+        return;
       }
-      return;
+
+      if(key==='biometric'){
+        if(loading)return;
+        if(biometricEnabled){
+          setBiometricEnabled(false);
+          setBiometricLoginEnabled(false);
+        }else{
+          setBiometricEnabled(true);
+          try{
+            const result=await busy(()=>registerBiometrics());
+            if(result.verified){
+              setBiometricLoginEnabled(true);
+              const username=(profile.username||rememberedUsername||'').trim();
+              if(username){
+                saveRememberedUsername(username);
+                setRememberedLoginUser(username);
+                setRememberLogin(true);
+                setForm(f=>({...f,loginUser:username}));
+              }
+            }else{
+              setBiometricEnabled(false);
+              setBiometricLoginEnabled(false);
+            }
+          }catch{
+            setBiometricEnabled(false);
+            setBiometricLoginEnabled(false);
+          }
+        }
+        return;
+      }
+
+      if(key==='due'||key==='goals'){
+        const patch=key==='due'?{dueNotifications:!profile.dueNotifications}:{goalNotifications:!profile.goalNotifications};
+        const snapshot=dataRef.current;
+        const next={...snapshot,profile:{...snapshot.profile,...patch}};
+        dataRef.current=next;setData(next);
+        try{
+          const p=await api.saveProfile(patch);
+          const settled={...dataRef.current,profile:p};dataRef.current=settled;setData(settled);
+        }catch(e){
+          dataRef.current=snapshot;setData(snapshot);
+          notify(e instanceof ApiError?e.message:'Não foi possível salvar a preferência.');
+        }
+        return;
+      }
     }
 
     switch(button.id){
@@ -940,23 +999,6 @@ export default function App() {
       catch{notify('Selecione e copie o código.');}
       return;
     }
-    if(button.id==='enableBiometrics'){
-      try{
-        const result=await busy(()=>registerBiometrics());
-        if(result.verified){
-          const username=(profile.username||rememberedUsername||'').trim();
-          if(username){
-            saveRememberedUsername(username);
-            setRememberedLoginUser(username);
-            setRememberLogin(true);
-            setForm(f=>({...f,loginUser:username}));
-          }
-          setBiometricAvailable(true);
-          notify('Biometria pronta neste aparelho.');
-        }
-      }catch{}
-      return;
-    }
     if(button.id==='biometricLogin'){
       const username=(form.loginUser||rememberedUsername||'').trim();
       if(!username)return notify('Marque “Lembrar usuário” após entrar para usar a biometria sem digitar.');
@@ -964,10 +1006,6 @@ export default function App() {
         const out=await busy(()=>loginWithBiometrics(username));
         await applyAuth(out);
       }catch{}
-      return;
-    }
-    if(button.id==='enablePush'){
-      try{await busy(()=>enablePushNotifications());notify('Notificações ativadas.');}catch{}
       return;
     }
     if(button.id==='installPwa'){
@@ -2127,15 +2165,15 @@ export default function App() {
                   <h3><i data-lucide='bell'></i>Notificações</h3>
                   <div className='setting-row'>
                     <div><strong>Vencimentos</strong><small>Contas e valores pendentes</small></div>
-                    <button className='switch on' data-setting='due' aria-label='Alertas de vencimentos'></button>
+                    <button className={`switch ios-switch ${profile.dueNotifications?'on':''}`.trim()} data-setting='due' aria-label='Alertas de vencimentos' aria-pressed={profile.dueNotifications}></button>
                   </div>
                   <div className='setting-row'>
                     <div><strong>Metas</strong><small>Prazos de objetivos</small></div>
-                    <button className='switch on' data-setting='goals' aria-label='Alertas de metas'></button>
+                    <button className={`switch ios-switch ${profile.goalNotifications?'on':''}`.trim()} data-setting='goals' aria-label='Alertas de metas' aria-pressed={profile.goalNotifications}></button>
                   </div>
                   <div className='setting-row'>
                     <div><strong>Notificações do sistema</strong><small>Receber alertas fora do app</small></div>
-                    <button className='premium-btn btn-glass compact-action' id='enablePush'>Ativar</button>
+                    <button className={`switch ios-switch ${pushEnabled?'on':''}`.trim()} data-setting='push' aria-label='Notificações do sistema' aria-pressed={pushEnabled}></button>
                   </div>
                 </div>
 
@@ -2147,7 +2185,7 @@ export default function App() {
                         <span className='biometric-setting-icon' aria-hidden='true'><i data-lucide={biometricPresentation.icon}></i></span>
                         <div><strong>{biometricPresentation.settingsLabel}</strong><small>Entrar sem digitar o usuário</small></div>
                       </div>
-                      <button className='premium-btn btn-glass compact-action' id='enableBiometrics'>Ativar</button>
+                      <button className={`switch ios-switch ${biometricEnabled?'on':''}`.trim()} data-setting='biometric' aria-label='Biometria neste aparelho' aria-pressed={biometricEnabled}></button>
                     </div>
                   )}
                   <div className='setting-row'>
@@ -2336,7 +2374,7 @@ export default function App() {
               Entrar 
               <i data-lucide='arrow-right'></i>
             </button>
-            {biometricAvailable && !desktopViewport && (
+            {biometricAvailable && biometricEnabled && !desktopViewport && (
               <button className='premium-btn btn-glass biometric-login-btn' id='biometricLogin' type='button'>
                 <span className='biometric-login-icon' aria-hidden='true'><i data-lucide={biometricPresentation.icon}></i></span>
                 <span>{biometricPresentation.loginLabel}</span>
