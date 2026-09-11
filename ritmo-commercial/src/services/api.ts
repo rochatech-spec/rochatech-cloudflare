@@ -105,6 +105,7 @@ export const api = {
   deleteEvent: (id: string) => request<void>(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getVapidKey: () => request<{ publicKey: string }>('/push/vapid-public-key'),
   savePushSubscription: (subscription: PushSubscriptionJSON) => request<{ ok: true }>('/push/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
+  removePushSubscription: (endpoint: string) => request<{ ok: true }>('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
   sendTestPush: () => request<{ delivered: number }>('/push/test', { method: 'POST' }),
   listFiles: () => request<StoredFile[]>('/files'),
   uploadFile: async (file: File) => {
