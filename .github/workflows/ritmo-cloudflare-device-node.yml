@@ -1,5 +1,5 @@
 name: Ritmo Commercial • Cloudflare Device Node Deploy
-# library-advanced-pwa-deploy: 2026-09-10-v1
+# functional-pwa-clean-deploy: 2026-09-10-v1
 
 on:
   push:
@@ -138,6 +138,11 @@ jobs:
             FILES_KV_ID="$(grep -Eo '[0-9a-f]{32}' /tmp/files-kv-create.txt | head -1)"
           fi
           test -n "$FILES_KV_ID"
+          {
+            echo "RITMO_DB_ID=$DB_ID"
+            echo "RITMO_SESSION_KV_ID=$KV_ID"
+            echo "RITMO_FILES_KV_ID=$FILES_KV_ID"
+          } >> "$GITHUB_ENV"
           node - "$DB_ID" "$KV_ID" "$FILES_KV_ID" <<'NODE'
           const fs=require('fs');
           const [db,kv,filesKv]=process.argv.slice(2);
@@ -168,26 +173,21 @@ jobs:
             printf '%s' "$VAPID_PRIVATE_KEY" | npx wrangler pages secret put VAPID_PRIVATE_KEY --project-name ritmo-commercial --config wrangler.bootstrap.jsonc
           fi
 
-      - name: Preparar PWA avançado da Biblioteca
+      - name: Validar e compilar PWA funcional
         run: |
           set -euo pipefail
-          rm -rf advanced-dist /tmp/ritmo-pwa-advanced
-          mkdir -p advanced-dist /tmp/ritmo-pwa-advanced
-          unzip -q deploy/Ritmo-PWA-Avancado.zip -d /tmp/ritmo-pwa-advanced
-          SRC="$(find /tmp/ritmo-pwa-advanced -type f -name index.html -printf '%h\n' | head -1)"
-          test -n "$SRC"
-          cp -a "$SRC"/. advanced-dist/
-          test -s advanced-dist/index.html
-          test -s advanced-dist/manifest.webmanifest
-          test -s advanced-dist/sw.js
-          grep -q 'Ritmo' advanced-dist/index.html
-          grep -q '"standalone"' advanced-dist/manifest.webmanifest
+          npm run check
+          npm run build
+          test -s dist/index.html
+          test -s dist/manifest.webmanifest
+          grep -q 'Ritmo' dist/index.html
+          grep -q 'standalone' dist/manifest.webmanifest
 
-      - name: Publicar PWA avançado + Functions
+      - name: Publicar PWA funcional + Functions
         run: |
           set -euo pipefail
           cp wrangler.deploy.jsonc wrangler.jsonc
-          npx wrangler pages deploy advanced-dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
+          npx wrangler pages deploy dist --project-name ritmo-commercial --branch main --commit-hash "$GITHUB_SHA"
 
 
       - name: Validar produção
@@ -207,6 +207,64 @@ jobs:
             sleep 4
           done
           test "$READY" = "1"
+
+      - name: Limpar testes e deployments antigos
+        run: |
+          set -euo pipefail
+
+          # Remove somente contas criadas pelos smoke tests conhecidos.
+          npx wrangler d1 execute ritmo-commercial-db --remote \
+            --command="DELETE FROM users WHERE username LIKE 'smoke.%' OR username LIKE 'smoke-%' OR display_name LIKE 'Ritmo Teste%';" \
+            --config wrangler.deploy.jsonc
+
+          # Mantém o deployment mais recente e remove os anteriores do projeto.
+          npx wrangler pages deployment list --project-name ritmo-commercial --json --config wrangler.deploy.jsonc > /tmp/ritmo-deployments.json
+          node <<'NODE' > /tmp/old-deployments.txt
+          const fs=require('fs');
+          const raw=fs.readFileSync('/tmp/ritmo-deployments.json','utf8');
+          let items=[];
+          try{items=JSON.parse(raw)}catch{
+            const p=raw.indexOf('['),q=raw.lastIndexOf(']');
+            if(p>=0&&q>p)items=JSON.parse(raw.slice(p,q+1));
+          }
+          items=(Array.isArray(items)?items:[]).filter(d=>d&&d.id);
+          items.sort((a,b)=>new Date(b.created_on||b.created_at||0)-new Date(a.created_on||a.created_at||0));
+          const keep=items[0]?.id;
+          for(const d of items){
+            if(d.id!==keep) process.stdout.write(String(d.id)+'\n');
+          }
+          NODE
+          while IFS= read -r DEPLOYMENT_ID; do
+            [ -z "$DEPLOYMENT_ID" ] && continue
+            npx wrangler pages deployment delete "$DEPLOYMENT_ID" \
+              --project-name ritmo-commercial --force --config wrangler.deploy.jsonc || true
+          done < /tmp/old-deployments.txt
+
+          # Exclui namespaces claramente temporários/antigos do Ritmo, preservando os dois ativos.
+          npx wrangler kv namespace list --config wrangler.bootstrap.jsonc > /tmp/kv-clean.json
+          node <<'NODE' > /tmp/old-kv.txt
+          const fs=require('fs');
+          const raw=fs.readFileSync('/tmp/kv-clean.json','utf8');
+          let items=[];
+          try{items=JSON.parse(raw)}catch{
+            const p=raw.indexOf('['),q=raw.lastIndexOf(']');
+            if(p>=0&&q>p)items=JSON.parse(raw.slice(p,q+1));
+          }
+          for(const n of Array.isArray(items)?items:[]){
+            const name=n.title||n.name||'';
+            if(/^ritmo-commercial-/i.test(name)
+              && !['ritmo-commercial-session','ritmo-commercial-files'].includes(name)
+              && /(test|tmp|temp|preview|old|backup)/i.test(name)){
+              process.stdout.write(String(n.id)+'\n');
+            }
+          }
+          NODE
+          while IFS= read -r KV_ID; do
+            [ -z "$KV_ID" ] && continue
+            npx wrangler kv namespace delete --namespace-id "$KV_ID" --config wrangler.bootstrap.jsonc || true
+          done < /tmp/old-kv.txt
+
+          echo "Cloudflare limpo: versão atual, D1 principal e KVs ativos preservados." >> "$GITHUB_STEP_SUMMARY"
 
 
 # fab-black-deploy-auth: 2026-09-10-v6
