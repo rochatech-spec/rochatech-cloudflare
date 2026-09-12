@@ -35,9 +35,6 @@ jobs:
           test -s dist/manifest.json
           test -s dist/sw.js
           test -s dist/control-symbol-green.svg
-      - name: Apply D1 schema
-        working-directory: control
-        run: npx --yes wrangler@latest d1 execute control-db --remote --file ./schema.sql
       - name: Deploy Pages
         working-directory: control
         run: npx --yes wrangler@latest pages deploy dist --project-name control-gestao-pessoal --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
