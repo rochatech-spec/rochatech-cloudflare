@@ -10,11 +10,9 @@ concurrency:
   group: control-final-production
   cancel-in-progress: true
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,21 +33,9 @@ jobs:
           test -s dist/manifest.json
           test -s dist/sw.js
           test -s dist/control-symbol-green.svg
-      - name: Deploy Pages
-        working-directory: control
-        run: npx --yes wrangler@latest pages deploy dist --project-name control-gestao-pessoal --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
-      - name: Smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE='https://control-gestao-pessoal.pages.dev'
-          for i in {1..30}; do
-            H=$(curl -sS -o /tmp/h -w '%{http_code}' "$BASE/?v=$GITHUB_SHA" || true)
-            A=$(curl -sS -o /tmp/a -w '%{http_code}' "$BASE/api/health?v=$GITHUB_SHA" || true)
-            L=$(curl -sS -o /tmp/l -w '%{http_code}' -H 'content-type: application/json' -X POST --data '{"email":"control-smoke-invalid@example.invalid","password":"invalid-password"}' "$BASE/api/auth/login?v=$GITHUB_SHA" || true)
-            if [ "$H" = 200 ] && [ "$A" = 200 ] && [ "$L" = 401 ] && grep -q 'CONTROL' /tmp/h && grep -q '"ok":true' /tmp/a; then exit 0; fi
-            sleep 4
-          done
-          cat /tmp/a || true
-          cat /tmp/l || true
-          exit 1
+      - name: Package build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-production-dist
+          path: control/dist
+          retention-days: 1
