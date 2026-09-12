@@ -1,0 +1,1 @@
+export const onRequestGet=async()=>Response.json({publicKey:'BKLYFNg_VMmdBoAUCGC22QlXxviDON7fudiUXgBKt-79KXD4BQKFpyYEVUGaIweoqqIpsF_Q7EK3jSpPNrS3gnE'},{headers:{'cache-control':'public,max-age=86400'}})
