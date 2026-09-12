@@ -51,9 +51,9 @@ jobs:
           git add deploy/control
           git commit -m "build(control): publish production assets" || exit 0
           git push origin HEAD:main
-      - name: Package build artifact
+      - name: Package deployment tree
         uses: actions/upload-artifact@v4
         with:
-          name: control-production-dist
-          path: control/dist
+          name: control-production-deployment
+          path: deploy/control
           retention-days: 1
