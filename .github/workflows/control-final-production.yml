@@ -26,9 +26,15 @@ jobs:
       - name: Build
         working-directory: control
         run: npm run build
+      - name: Prepare deployment tree
+        shell: bash
+        run: |
+          rm -rf deploy/control
+          mkdir -p deploy/control
+          cp -R control/dist/. deploy/control/
       - name: Build Pages Functions bundle
         working-directory: control
-        run: npx --yes wrangler@latest pages functions build functions --outfile deploy/control/_worker.js --project-directory . --output-routes-path deploy/control/_routes.json
+        run: npx --yes wrangler@latest pages functions build functions --outfile ../deploy/control/_worker.js --project-directory . --output-routes-path ../deploy/control/_routes.json
       - name: Validate build
         working-directory: control
         run: |
@@ -36,13 +42,10 @@ jobs:
           test -s dist/manifest.json
           test -s dist/sw.js
           test -s dist/control-symbol-green.svg
-          test -s deploy/control/_worker.js
+          test -s ../deploy/control/_worker.js
       - name: Publish build into deployment tree
         shell: bash
         run: |
-          rm -rf deploy/control/assets
-          mkdir -p deploy/control
-          cp -R control/dist/. deploy/control/
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add deploy/control
